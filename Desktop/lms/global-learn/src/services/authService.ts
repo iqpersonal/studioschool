@@ -1,5 +1,5 @@
-import { User } from '../models/user';
-import bcrypt from 'bcrypt';
+import User from '../models/user';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 class AuthService {
@@ -38,6 +38,27 @@ class AuthService {
 
     async getUserById(userId: string) {
         return this.userModel.findById(userId).select('-password');
+    }
+}
+
+export class UserService {
+    private userModel: typeof User;
+
+    constructor() {
+        this.userModel = User;
+    }
+
+    async createUser(userData: any) {
+        const newUser = new this.userModel(userData);
+        return newUser.save();
+    }
+
+    async findUserByEmail(email: string) {
+        return this.userModel.findOne({ email });
+    }
+
+    async findUserById(userId: string) {
+        return this.userModel.findById(userId);
     }
 }
 
