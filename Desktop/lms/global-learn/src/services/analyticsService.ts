@@ -30,3 +30,5 @@ export class AnalyticsService {
         await this.analyticsModel.create(activityData);
     }
 }
+export default AnalyticsService;
+}

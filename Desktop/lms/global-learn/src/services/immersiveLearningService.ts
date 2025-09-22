@@ -3,19 +3,19 @@ export class ImmersiveLearningService {
         // Initialization code if needed
     }
 
-    createExperience(experienceData) {
+    createExperience(experienceData: any) {
         // Logic to create a new immersive learning experience
     }
 
-    getExperienceById(experienceId) {
+    getExperienceById(experienceId: any) {
         // Logic to retrieve an immersive learning experience by ID
     }
 
-    updateExperience(experienceId, updatedData) {
+    updateExperience(experienceId: any, updatedData: any) {
         // Logic to update an existing immersive learning experience
     }
 
-    deleteExperience(experienceId) {
+    deleteExperience(experienceId: any) {
         // Logic to delete an immersive learning experience
     }
 
@@ -23,15 +23,17 @@ export class ImmersiveLearningService {
         // Logic to list all immersive learning experiences
     }
 
-    enrollUserInExperience(userId, experienceId) {
+    enrollUserInExperience(userId: any, experienceId: any) {
         // Logic to enroll a user in an immersive learning experience
     }
 
-    getUserExperiences(userId) {
+    getUserExperiences(userId: any) {
         // Logic to retrieve all immersive learning experiences for a user
     }
 
-    trackUserProgress(userId, experienceId, progressData) {
+    trackUserProgress(userId: any, experienceId: any, progressData: any) {
         // Logic to track user progress in an immersive learning experience
     }
+}
+export default ImmersiveLearningService;
 }

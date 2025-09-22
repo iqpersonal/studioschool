@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import ContentController from '../controllers/contentController';
-import { authMiddleware } from '../middlewares/authMiddleware';
+import { ContentService } from '../services/contentService';
+import authMiddleware from '../middlewares/authMiddleware';
 
 const router = Router();
-const contentController = new ContentController();
+const contentService = new ContentService();
+const contentController = new ContentController(contentService);
 
 // Route for uploading lessons
 router.post('/lessons', authMiddleware, contentController.uploadLesson);

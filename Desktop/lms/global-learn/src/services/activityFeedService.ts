@@ -1,17 +1,19 @@
-import { Activity } from '../models/activity';
+import Activity from '../models/activity';
 
-export class ActivityFeedService {
-    private activities: Activity[] = [];
+class ActivityFeedService {
+    private activities: any[] = [];
 
-    public getActivities(userId: string): Activity[] {
+    public getActivities(userId: string): any[] {
         return this.activities.filter(activity => activity.userId === userId);
     }
 
-    public addActivity(activity: Activity): void {
+    public addActivity(activity: any): void {
         this.activities.push(activity);
     }
 
     public clearActivities(userId: string): void {
         this.activities = this.activities.filter(activity => activity.userId !== userId);
     }
+}
+export default ActivityFeedService;
 }

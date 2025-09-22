@@ -36,6 +36,15 @@ const paymentSchema = new Schema({
     }
 });
 
-const Payment = model('Payment', paymentSchema);
+export interface IPayment extends Document {
+    userId: string;
+    courseId: string;
+    amount: number;
+    paymentMethod: string;
+    status: string;
+    transactionId: string;
+    createdAt: Date;
+}
 
+const Payment = model<IPayment>('Payment', paymentSchema);
 export default Payment;

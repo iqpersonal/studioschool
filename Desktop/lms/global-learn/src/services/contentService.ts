@@ -33,3 +33,5 @@ export class ContentService {
         return false;
     }
 }
+export default ContentService;
+}

@@ -48,7 +48,9 @@ export class CollaborationService {
         const project = this.getProjectById(projectId);
         if (!project || !project.collaborators) return false;
 
-        project.collaborators = project.collaborators.filter(id => id !== userId);
+        project.collaborators = project.collaborators.filter((id: string) => id !== userId);
         return true;
     }
+}
+export default CollaborationService;
 }

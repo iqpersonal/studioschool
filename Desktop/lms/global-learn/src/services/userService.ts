@@ -1,19 +1,22 @@
-import { User } from '../models/user';
+import User, { IUser } from '../models/user';
 
 export class UserService {
-    async getUserById(userId: string): Promise<User | null> {
-        // Logic to fetch user by ID from the database
+    async getUserById(userId: string): Promise<IUser | null> {
+        return User.findById(userId);
     }
 
-    async updateUser(userId: string, userData: Partial<User>): Promise<User | null> {
-        // Logic to update user information in the database
+    async updateUser(userId: string, userData: Partial<IUser>): Promise<IUser | null> {
+        return User.findByIdAndUpdate(userId, userData, { new: true });
     }
 
     async deleteUser(userId: string): Promise<boolean> {
-        // Logic to delete a user from the database
+        const result = await User.findByIdAndDelete(userId);
+        return !!result;
     }
 
-    async getAllUsers(): Promise<User[]> {
-        // Logic to fetch all users from the database
+    async getAllUsers(): Promise<IUser[]> {
+        return User.find();
     }
+}
+export default UserService;
 }

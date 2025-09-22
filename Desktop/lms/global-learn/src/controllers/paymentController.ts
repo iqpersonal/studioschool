@@ -10,11 +10,12 @@ class PaymentController {
 
     public async processPayment(req: Request, res: Response): Promise<void> {
         try {
-            const paymentData = req.body;
-            const result = await this.paymentService.processPayment(paymentData);
+            const { userId, courseId, amount } = req.body;
+            const result = await this.paymentService.processPayment(userId, courseId, amount);
             res.status(200).json(result);
         } catch (error) {
-            res.status(500).json({ message: 'Payment processing failed', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Payment processing failed', error: errMsg });
         }
     }
 
@@ -24,7 +25,8 @@ class PaymentController {
             const history = await this.paymentService.getPaymentHistory(userId);
             res.status(200).json(history);
         } catch (error) {
-            res.status(500).json({ message: 'Failed to retrieve payment history', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Failed to retrieve payment history', error: errMsg });
         }
     }
 
@@ -34,7 +36,8 @@ class PaymentController {
             const result = await this.paymentService.refundPayment(paymentId);
             res.status(200).json(result);
         } catch (error) {
-            res.status(500).json({ message: 'Refund processing failed', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Refund processing failed', error: errMsg });
         }
     }
 }

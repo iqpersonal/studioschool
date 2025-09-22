@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { DashboardService } from '../services/dashboardService';
+import DashboardService from '../services/dashboardService';
 
-export class DashboardController {
+class DashboardController {
     private dashboardService: DashboardService;
 
     constructor() {
@@ -14,7 +14,8 @@ export class DashboardController {
             const data = await this.dashboardService.getStudentData(studentId);
             res.status(200).json(data);
         } catch (error) {
-            res.status(500).json({ message: 'Error retrieving student dashboard data', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Error retrieving student dashboard data', error: errMsg });
         }
     }
 
@@ -24,7 +25,8 @@ export class DashboardController {
             const data = await this.dashboardService.getParentData(parentId);
             res.status(200).json(data);
         } catch (error) {
-            res.status(500).json({ message: 'Error retrieving parent dashboard data', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Error retrieving parent dashboard data', error: errMsg });
         }
     }
 
@@ -34,7 +36,9 @@ export class DashboardController {
             const data = await this.dashboardService.getInstructorData(instructorId);
             res.status(200).json(data);
         } catch (error) {
-            res.status(500).json({ message: 'Error retrieving instructor dashboard data', error });
+            const errMsg = error instanceof Error ? error.message : String(error);
+            res.status(500).json({ message: 'Error retrieving instructor dashboard data', error: errMsg });
         }
     }
 }
+export default DashboardController;
