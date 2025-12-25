@@ -1,0 +1,2270 @@
+// Force update
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, getDocs, query, where, doc, getDoc, updateDoc, addDoc, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
+import { db, functions } from '../../services/firebase';
+import { useAuth } from '../../hooks/useAuth';
+import {
+    SchoolDivision, TimeSlot, Major, Group, Grade, Section, Subject, UserProfile, TimetableEntry, SubjectAllocation, TeacherAssignment
+} from '../../types';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/Card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui/Tabs';
+import Button from '../../components/ui/Button';
+import Loader from '../../components/ui/Loader';
+import Select from '../../components/ui/Select';
+import Label from '../../components/ui/Label';
+import Input from '../../components/ui/Input';
+import Modal from '../../components/ui/Modal';
+import DivisionModal from '../../components/timetable/DivisionModal';
+import TimeSlotModal from '../../components/timetable/TimeSlotModal';
+import ConfirmationModal from '../../components/ui/ConfirmationModal';
+import { validateTimetableEntry, getTeacherWorkload } from '../../utils/timetableLogic';
+import { CheckCircle, Trash2 } from 'lucide-react';
+import ValidationReportModal from '../../components/timetable/ValidationReportModal';
+import { toast } from '../../components/ui/Toast';
+import TeacherConstraintsModal from '../../components/timetable/TeacherConstraintsModal';
+import { Clock } from 'lucide-react';
+
+const normalize = (s: string) => s?.trim().toLowerCase().replace(/['’]/g, "") || '';
+
+// Helper to get day name from index or vice versa if needed
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const TimetableManagement: React.FC = () => {
+    const { currentUserData } = useAuth();
+    const schoolId = currentUserData?.schoolId;
+
+    // Data State
+    const [divisions, setDivisions] = useState<SchoolDivision[]>([]);
+    const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+    const [majors, setMajors] = useState<Major[]>([]);
+    const [groups, setGroups] = useState<Group[]>([]);
+    const [grades, setGrades] = useState<Grade[]>([]);
+    const [sections, setSections] = useState<Section[]>([]);
+    const [subjects, setSubjects] = useState<Subject[]>([]);
+    const [teachers, setTeachers] = useState<UserProfile[]>([]);
+    const [allEntries, setAllEntries] = useState<TimetableEntry[]>([]);
+    const [allocations, setAllocations] = useState<SubjectAllocation[]>([]);
+    const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
+    const [workingDays, setWorkingDays] = useState<string[]>([]);
+
+    const [loading, setLoading] = useState(true);
+
+    // Filter State
+    const [selectedDivisionId, setSelectedDivisionId] = useState('');
+    const [selectedMajorId, setSelectedMajorId] = useState('');
+    const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+    const [selectedGradeId, setSelectedGradeId] = useState('');
+    const [selectedSectionId, setSelectedSectionId] = useState('');
+    const [groupDivisionMap, setGroupDivisionMap] = useState<{ [groupId: string]: string }>({});
+
+    // UI State
+    const [editingCell, setEditingCell] = useState<{ day: string, timeSlotId: string } | null>(null);
+    const [tempEntry, setTempEntry] = useState<Partial<TimetableEntry>>({});
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
+
+    // AI Generation State
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 });
+    const [generatedSchedule, setGeneratedSchedule] = useState<any[]>([]);
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [generationScope, setGenerationScope] = useState<'current' | 'global'>('current');
+
+    // Validation Report State
+    const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
+    const [validationReport, setValidationReport] = useState<{
+        errors: any[];
+        validCount: number;
+        totalCount: number;
+        scope: string;
+    }>({ errors: [], validCount: 0, totalCount: 0, scope: '' });
+
+    // Settings Tab State
+    const [isDivisionModalOpen, setIsDivisionModalOpen] = useState(false);
+    const [isTimeSlotModalOpen, setIsTimeSlotModalOpen] = useState(false);
+    const [selectedDivision, setSelectedDivision] = useState<SchoolDivision | null>(null);
+    const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<{ type: 'division' | 'timeslot', data: any } | null>(null);
+
+    // Teacher Constraints State
+    const [isConstraintsModalOpen, setIsConstraintsModalOpen] = useState(false);
+    const [selectedTeacherForConstraints, setSelectedTeacherForConstraints] = useState<UserProfile | null>(null);
+
+    // Print State
+    const [printMode, setPrintMode] = useState<'single' | 'batch-teachers' | 'batch-classes'>('single');
+
+    const handlePrint = () => {
+        setPrintMode('single');
+        setTimeout(() => window.print(), 100);
+    };
+
+    const handlePrintBatchTeachers = () => {
+        if (!selectedDivisionId) {
+            toast({ title: "Error", description: "Please select a Division (Bell Schedule) first.", variant: "destructive" });
+            return;
+        }
+        setPrintMode('batch-teachers');
+        setTimeout(() => window.print(), 100);
+    };
+
+    const handlePrintBatchClasses = () => {
+        if (!selectedDivisionId) {
+            toast({ title: "Error", description: "Please select a Division (Bell Schedule) first.", variant: "destructive" });
+            return;
+        }
+        setPrintMode('batch-classes');
+        setTimeout(() => window.print(), 100);
+    };
+
+    // Hierarchy State
+    // MajorName -> GroupName -> GradeName -> Set<SectionName>
+    const [hierarchy, setHierarchy] = useState<{ [major: string]: { [group: string]: { [grade: string]: Set<string> } } }>({});
+    const [isHierarchyLoaded, setIsHierarchyLoaded] = useState(false);
+    const [cachedStudents, setCachedStudents] = useState<UserProfile[]>([]);
+    const [showDebug, setShowDebug] = useState(false);
+
+    // Sync selectedDivisionId with groupDivisionMap when groups are selected
+    useEffect(() => {
+        if (selectedGroupIds.length > 0) {
+            // Use the division of the first selected group as the view context
+            const firstGroupId = selectedGroupIds[0];
+            const mappedDivisionId = groupDivisionMap[firstGroupId];
+            if (mappedDivisionId) {
+                setSelectedDivisionId(mappedDivisionId);
+            }
+        }
+    }, [selectedGroupIds, groupDivisionMap]);
+
+    const handleOpenConstraints = (teacher: UserProfile) => {
+        setSelectedTeacherForConstraints(teacher);
+        setIsConstraintsModalOpen(true);
+    };
+
+    const handleSaveConstraints = (updatedTeacher: UserProfile) => {
+        setTeachers(prev => prev.map(t => t.uid === updatedTeacher.uid ? updatedTeacher : t));
+    };
+
+    // Fetch Data
+    useEffect(() => {
+        if (!schoolId) return;
+
+        const fetchData = async () => {
+            try {
+                // Fetch School for working days and active academic year
+                const schoolDocRef = doc(db, 'schools', schoolId);
+                const schoolDoc = await getDoc(schoolDocRef);
+                let activeYear = '';
+                if (schoolDoc.exists()) {
+                    const data = schoolDoc.data();
+                    setWorkingDays(data?.workingDays || ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"]);
+                    activeYear = data?.activeAcademicYear || '';
+                }
+
+                // Fetch Majors, Groups, Grades, Sections, Subjects, Divisions, TimeSlots
+                const fetchBasics = Promise.all([
+                    getDocs(query(collection(db, 'schoolDivisions'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timeSlots'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'majors'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'groups'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'grades'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'sections'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'subjects'), where('schoolId', '==', schoolId))),
+                ]).then(([divSnap, slotSnap, majSnap, grpSnap, grdSnap, secSnap, subSnap]) => {
+                    setDivisions(divSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SchoolDivision)));
+                    setTimeSlots(slotSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeSlot)).sort((a, b) => a.startTime.localeCompare(b.startTime)));
+                    setMajors(majSnap.docs.map(d => ({ id: d.id, ...d.data() } as Major)));
+                    setGroups(grpSnap.docs.map(d => ({ id: d.id, ...d.data() } as Group)));
+                    setGrades(grdSnap.docs.map(d => ({ id: d.id, ...d.data() } as Grade)));
+                    setSections(secSnap.docs.map(d => ({ id: d.id, ...d.data() } as Section)));
+                    setSubjects(subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Subject)));
+                }).catch(err => console.error("Error fetching basics:", err));
+
+                // Fetch Teachers
+                // Fetch Teachers (Handle both string and array roles)
+                // Fetch Teachers (Handle both string and array roles, plus other academic roles who might teach)
+                const teacherRoles = ['teacher', 'head-of-section', 'subject-coordinator', 'academic-director'];
+
+                const fetchQueries = teacherRoles.flatMap(role => [
+                    getDocs(query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', 'array-contains', role))),
+                    getDocs(query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', '==', role)))
+                ]);
+
+                const fetchTeachers = Promise.all(fetchQueries)
+                    .then((snaps) => {
+                        const teacherMap = new Map();
+
+                        snaps.forEach(snap => {
+                            snap.docs.forEach(doc => {
+                                if (!teacherMap.has(doc.id)) {
+                                    teacherMap.set(doc.id, { uid: doc.id, ...doc.data() });
+                                }
+                            });
+                        });
+
+                        const allTeachers = Array.from(teacherMap.values()) as UserProfile[];
+                        console.log("Fetched Teachers (Merged):", allTeachers.map(t => ({ name: t.name, role: t.role })));
+                        setTeachers(allTeachers);
+                    })
+                    .catch(err => console.error("Error fetching teachers:", err));
+
+                // Fetch Hierarchy (Students)
+                const fetchHierarchyData = async () => {
+                    if (!activeYear) {
+                        console.warn("No active academic year found. Skipping student hierarchy fetch.");
+                        setIsHierarchyLoaded(true); // Mark as loaded (but empty) to avoid fallback to "Show All"
+                        return;
+                    }
+                    try {
+                        const studentsQuery1 = query(collection(db, 'users'),
+                            where('schoolId', '==', schoolId),
+                            where('academicYear', '==', activeYear),
+                            where('role', '==', 'student')
+                        );
+                        const studentsSnap = await getDocs(studentsQuery1);
+
+                        // Also fetch array-contains 'student' to be safe
+                        const studentsQuery2 = query(collection(db, 'users'),
+                            where('schoolId', '==', schoolId),
+                            where('academicYear', '==', activeYear),
+                            where('role', 'array-contains', 'student')
+                        );
+                        const studentsSnapArray = await getDocs(studentsQuery2);
+
+                        const newHierarchy: { [major: string]: { [group: string]: { [grade: string]: Set<string> } } } = {};
+                        const processedIds = new Set();
+                        const allStudents: UserProfile[] = [];
+
+                        [...studentsSnap.docs, ...studentsSnapArray.docs].forEach(doc => {
+                            if (processedIds.has(doc.id)) return;
+                            processedIds.add(doc.id);
+
+                            const data = doc.data() as UserProfile;
+                            allStudents.push({ uid: doc.id, ...data });
+
+                            // Use Major Name if available, or ID if that's what's stored. 
+                            // The UserProfile type says 'major?: string; // from E_Major_Desc'. 
+                            // Usually this is the NAME. But our dropdown uses IDs.
+                            // We need to match what's in the dropdown.
+                            // The dropdown uses `majors` collection IDs.
+                            // If UserProfile stores Major NAME, we need to map it.
+                            // Let's assume UserProfile stores Major NAME for now as per type hint.
+
+                            const majorName = data.major;
+                            const groupName = data.group;
+                            const gradeName = data.grade;
+                            const sectionName = data.section;
+
+                            if (majorName && groupName && gradeName && sectionName) {
+                                if (!newHierarchy[majorName]) newHierarchy[majorName] = {};
+                                if (!newHierarchy[majorName][groupName]) newHierarchy[majorName][groupName] = {};
+                                if (!newHierarchy[majorName][groupName][gradeName]) newHierarchy[majorName][groupName][gradeName] = new Set();
+                                newHierarchy[majorName][groupName][gradeName].add(sectionName);
+                            }
+                        });
+                        setHierarchy(newHierarchy);
+                        setCachedStudents(allStudents);
+                        setIsHierarchyLoaded(true);
+                    } catch (e) {
+                        console.error("Error fetching hierarchy:", e);
+                        setIsHierarchyLoaded(true); // Mark as loaded (failed) to avoid fallback
+                    }
+                };
+
+                // Fetch Timetable Entries, Allocations & Teacher Assignments
+                console.log("Fetching entries for schoolId:", schoolId);
+                const fetchEntries = Promise.all([
+                    getDocs(query(collection(db, 'timetableEntries'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'teacherAssignments'), where('schoolId', '==', schoolId)))
+                ]).then(([entrySnap, allocSnap, assignSnap]) => {
+                    console.log("Fetched entries count:", entrySnap.size);
+                    console.log("Fetched allocations count:", allocSnap.size);
+                    setAllEntries(entrySnap.docs.map(d => ({ id: d.id, ...d.data() } as TimetableEntry)));
+                    setAllocations(allocSnap.docs.map(d => ({ id: d.id, ...d.data() } as SubjectAllocation)));
+                    setTeacherAssignments(assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherAssignment)));
+                }).catch(err => console.error("Error fetching entries:", err));
+
+                await Promise.all([fetchBasics, fetchTeachers, fetchEntries, fetchHierarchyData()]);
+                setLoading(false);
+            } catch (err) {
+                console.error("Error in main fetch:", err);
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [schoolId, isDivisionModalOpen, isTimeSlotModalOpen, itemToDelete]);
+
+    const refreshData = () => {
+        setLoading(true);
+        // Re-trigger the effect by toggling a dummy state or extracting fetch logic
+        // For now, let's just reload the page as it's the most reliable way to reset everything
+        window.location.reload();
+    };
+
+    // Derived State
+    const activeTimeSlots = useMemo(() => {
+        return timeSlots
+            .filter(ts => ts.divisionId === selectedDivisionId)
+            .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    }, [timeSlots, selectedDivisionId]);
+
+    const filteredGroups = useMemo(() => {
+        if (!selectedMajorId) return [];
+        return groups.filter(g => g.majorId === selectedMajorId);
+    }, [groups, selectedMajorId]);
+
+    const filteredDivisions = useMemo(() => {
+        return divisions.filter(d => {
+            if (selectedMajorId && d.majorId && d.majorId !== selectedMajorId) return false;
+            // Show divisions that match ANY of the selected groups
+            if (selectedGroupIds.length > 0 && d.groupIds && d.groupIds.length > 0) {
+                const hasMatchingGroup = d.groupIds.some(gid => selectedGroupIds.includes(gid));
+                if (!hasMatchingGroup) return false;
+            }
+            return true;
+        });
+    }, [divisions, selectedMajorId, selectedGroupIds]);
+
+    // Auto-select division if only one exists
+    useEffect(() => {
+        if (filteredDivisions.length === 1 && !selectedDivisionId) {
+            setSelectedDivisionId(filteredDivisions[0].id);
+        }
+    }, [filteredDivisions, selectedDivisionId]);
+
+    const filteredGrades = useMemo(() => {
+        if (!selectedMajorId) return [];
+
+        const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+
+        // If no groups selected, include ALL groups for this major
+        let targetGroupNames: string[] = [];
+        if (selectedGroupIds.length > 0) {
+            targetGroupNames = groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name);
+        } else {
+            // Get all groups for this major
+            targetGroupNames = groups.filter(g => g.majorId === selectedMajorId).map(g => g.name);
+        }
+
+        console.log("Filtering Grades:", { selectedMajorName, targetGroupNames, hierarchyKeys: Object.keys(hierarchy) });
+
+        if (selectedMajorName && hierarchy[selectedMajorName]) {
+            const validGradeNames = new Set<string>();
+            targetGroupNames.forEach(groupName => {
+                if (hierarchy[selectedMajorName][groupName]) {
+                    Object.keys(hierarchy[selectedMajorName][groupName]).forEach(g => validGradeNames.add(g));
+                }
+            });
+            console.log("Valid Grades from Hierarchy:", Array.from(validGradeNames));
+            return grades.filter(g => validGradeNames.has(g.name));
+        }
+
+        if (!isHierarchyLoaded) return grades;
+
+        console.log("Hierarchy lookup failed, returning empty.");
+        return [];
+    }, [grades, selectedMajorId, selectedGroupIds, majors, groups, hierarchy, isHierarchyLoaded]);
+
+    const filteredSections = useMemo(() => {
+        if (!selectedMajorId || selectedGroupIds.length === 0 || !selectedGradeId) return [];
+
+        const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+        const selectedGradeName = grades.find(g => g.id === selectedGradeId)?.name;
+        const selectedGroupNames = groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name);
+
+        if (selectedMajorName && selectedGradeName && hierarchy[selectedMajorName]) {
+            const validSectionNames = new Set<string>();
+            selectedGroupNames.forEach(groupName => {
+                if (hierarchy[selectedMajorName][groupName]?.[selectedGradeName]) {
+                    hierarchy[selectedMajorName][groupName][selectedGradeName].forEach(s => validSectionNames.add(s));
+                }
+            });
+            return sections.filter(s => validSectionNames.has(s.name));
+        }
+
+        if (!isHierarchyLoaded) return sections;
+
+        return [];
+    }, [sections, selectedMajorId, selectedGroupIds, selectedGradeId, majors, groups, grades, hierarchy, isHierarchyLoaded]);
+
+    const currentClassEntries = useMemo(() => {
+        if (!selectedGradeId || !selectedSectionId) return [];
+        const gradeObj = grades.find(g => g.id === selectedGradeId);
+        const sectionObj = sections.find(s => s.id === selectedSectionId);
+
+        if (!gradeObj || !sectionObj) return [];
+
+        return allEntries.filter(e =>
+            (e.grade === gradeObj.name || e.grade === gradeObj.id) &&
+            (e.section === sectionObj.name || e.section === sectionObj.id)
+        );
+    }, [allEntries, selectedGradeId, selectedSectionId, grades, sections]);
+
+    const currentClassAllocations = useMemo(() => {
+        if (!selectedGradeId || !selectedSectionId) return [];
+        return allocations.filter(a => a.gradeId === selectedGradeId && a.sectionId === selectedSectionId);
+    }, [allocations, selectedGradeId, selectedSectionId]);
+
+    // Handlers
+    const handleCellClick = (day: string, timeSlotId: string) => {
+        if (!selectedGradeId || !selectedSectionId) {
+            alert("Please select a Grade and Section first.");
+            return;
+        }
+
+        const existingEntry = currentClassEntries.find(e => e.day === day && e.timeSlotId === timeSlotId);
+        setTempEntry(existingEntry || {
+            schoolId,
+            day,
+            timeSlotId,
+            grade: grades.find(g => g.id === selectedGradeId)?.name,
+            section: sections.find(s => s.id === selectedSectionId)?.name
+        });
+        setEditingCell({ day, timeSlotId });
+        setSaveError(null);
+    };
+
+    const handleSaveEntry = async () => {
+        if (!tempEntry.teacherId || !tempEntry.subjectId) {
+            setSaveError("Subject and Teacher are required.");
+            return;
+        }
+
+        // Validate
+        const validation = validateTimetableEntry(tempEntry, allEntries);
+        if (!validation.isValid) {
+            setSaveError(validation.error || "Invalid entry.");
+            return;
+        }
+
+        try {
+            if (tempEntry.id) {
+                // Update
+                const entryRef = doc(db, 'timetableEntries', tempEntry.id);
+                await updateDoc(entryRef, tempEntry);
+                setAllEntries(prev => prev.map(e => e.id === tempEntry.id ? { ...e, ...tempEntry } as TimetableEntry : e));
+            } else {
+                // Create
+                const docRef = await addDoc(collection(db, 'timetableEntries'), tempEntry);
+                setAllEntries(prev => [...prev, { ...tempEntry, id: docRef.id } as TimetableEntry]);
+            }
+            setEditingCell(null);
+        } catch (err) {
+            console.error("Error saving entry:", err);
+            setSaveError("Failed to save entry.");
+        }
+    };
+
+    const handleDeleteEntry = async () => {
+        if (!tempEntry.id) {
+            setEditingCell(null);
+            return;
+        }
+        try {
+            await deleteDoc(doc(db, 'timetableEntries', tempEntry.id));
+            setAllEntries(prev => prev.filter(e => e.id !== tempEntry.id));
+            setEditingCell(null);
+        } catch (err) {
+            console.error("Error deleting entry:", err);
+        }
+    };
+
+
+
+    // Settings Handlers
+    const handleWorkingDayChange = (day: string) => {
+        setWorkingDays(prev =>
+            prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+        );
+    };
+
+    const saveWorkingDays = async () => {
+        if (!schoolId) return;
+        const schoolRef = doc(db, 'schools', schoolId);
+        await updateDoc(schoolRef, { workingDays });
+        alert('Working days updated!');
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!itemToDelete) return;
+        const { type, data } = itemToDelete;
+        let collectionName = '';
+        if (type === 'division') collectionName = 'schoolDivisions';
+        else if (type === 'timeslot') collectionName = 'timeSlots';
+
+        await deleteDoc(doc(db, collectionName, data.id));
+        setItemToDelete(null);
+    }
+
+    const handleSyncStructure = async () => {
+        if (!schoolId) return;
+        setLoading(true);
+        try {
+            // 1. Fetch all users (students & teachers)
+            const usersQuery = query(collection(db, 'users'), where('schoolId', '==', schoolId));
+            const usersSnap = await getDocs(usersQuery);
+            const users = usersSnap.docs.map(d => d.data() as UserProfile);
+
+            // 2. Extract unique Majors and Groups
+            const uniqueMajors = new Set<string>();
+            const uniqueGroups = new Set<string>(); // Store as "MajorId:GroupName" to link them? Or just names? 
+            // The current data model links Group -> Major via majorId. 
+            // If we just have names in users, we need to infer the link.
+            // Assumption: A Group name is unique enough or we map it. 
+            // Better approach: Map MajorName -> Set<GroupName>
+            const structure = new Map<string, Set<string>>();
+
+            users.forEach(u => {
+                if (u.major) {
+                    if (!structure.has(u.major)) {
+                        structure.set(u.major, new Set());
+                    }
+                    if (u.group) {
+                        structure.get(u.major)?.add(u.group);
+                    }
+                }
+            });
+
+            const batch = writeBatch(db);
+            let operationCount = 0;
+
+            // 3. Create Majors and Groups
+            for (const [majorName, groupNames] of structure.entries()) {
+                // Check if major exists
+                const majorRef = doc(collection(db, 'majors')); // Auto-ID
+                // Ideally check if exists by name, but for now let's just create if empty. 
+                // To avoid duplicates, we should check existing 'majors' state.
+                const existingMajor = majors.find(m => m.name === majorName);
+                let majorId = existingMajor?.id;
+
+                if (!existingMajor) {
+                    majorId = majorRef.id;
+                    batch.set(majorRef, {
+                        schoolId,
+                        name: majorName,
+                        createdAt: new Date() // Timestamp
+                    });
+                    operationCount++;
+                }
+
+                // Create Groups linked to this Major
+                for (const groupName of groupNames) {
+                    const existingGroup = groups.find(g => g.name === groupName && g.majorId === majorId);
+                    if (!existingGroup && majorId) {
+                        const groupRef = doc(collection(db, 'groups'));
+                        batch.set(groupRef, {
+                            schoolId,
+                            majorId,
+                            name: groupName,
+                            createdAt: new Date()
+                        });
+                        operationCount++;
+                    }
+                }
+            }
+
+            if (operationCount > 0) {
+                await batch.commit();
+                alert(`Synced! Created ${operationCount} new records.`);
+                // Trigger re-fetch
+                setIsDivisionModalOpen(prev => !prev); // Hacky trigger or just reload page
+                window.location.reload();
+            } else {
+                alert("Everything is already up to date.");
+            }
+
+        } catch (err) {
+            console.error("Error syncing structure:", err);
+            alert("Failed to sync structure.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
+    // ... (existing helper functions)
+
+    const handleAutoGenerate = async () => {
+        if (generationScope === 'current' && !selectedDivisionId) {
+            toast({ title: 'Validation Error', description: 'Please select a division for "Current Division" scope.', variant: 'destructive' });
+            return;
+        }
+
+        setIsGenerating(true);
+        setGenerationProgress({ current: 0, total: 0 });
+
+        try {
+            let mergedAllocations: SubjectAllocation[] = [];
+            let activeSlotsForGen: TimeSlot[] = [];
+            let existingEntriesForGen: TimetableEntry[] = [];
+            let allDivisions = divisions;
+
+            // 1. Fetch Data (if Global) or Use State
+            if (generationScope === 'global') {
+                const [allAllocSnap, allAssignSnap, allSlotsSnap, allEntriesSnap, allDivsSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'teacherAssignments'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timeSlots'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timetableEntries'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'schoolDivisions'), where('schoolId', '==', schoolId)))
+                ]);
+
+                const globalAllocations = allAllocSnap.docs.map(d => ({ id: d.id, ...d.data() } as SubjectAllocation));
+                const globalAssignments = allAssignSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherAssignment));
+                activeSlotsForGen = allSlotsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeSlot));
+                allDivisions = allDivsSnap.docs.map(d => ({ id: d.id, ...d.data() } as SchoolDivision));
+                existingEntriesForGen = []; // Clear for global regen
+
+                // Merge Assignments
+                mergedAllocations = [...globalAllocations];
+                const convertedGlobalAssignments = globalAssignments.map(ta => {
+                    const normalize = (s: string) => s?.trim().toLowerCase() || '';
+                    const gradeId = grades.find(g => normalize(g.name) === normalize(ta.grade))?.id;
+                    const sectionId = sections.find(s => normalize(s.name) === normalize(ta.section))?.id;
+                    if (!gradeId || !sectionId) return null;
+                    return {
+                        id: ta.id,
+                        majorName: ta.major || null,
+                        groupName: (ta as any).group || null,
+                        schoolId: ta.schoolId,
+                        gradeId,
+                        sectionId,
+                        subjectId: ta.subjectId,
+                        teacherId: ta.teacherId,
+                        periodsPerWeek: ta.periodsPerWeek || 0,
+                    } as any;
+                }).filter(a => a !== null);
+
+                convertedGlobalAssignments.forEach(ca => {
+                    const exists = mergedAllocations.some(ma =>
+                        ma.gradeId === ca.gradeId &&
+                        ma.sectionId === ca.sectionId &&
+                        ma.subjectId === ca.subjectId &&
+                        ma.teacherId === ca.teacherId
+                    );
+                    if (!exists) mergedAllocations.push(ca);
+                });
+
+            } else {
+                // Current Scope
+                activeSlotsForGen = timeSlots;
+                existingEntriesForGen = allEntries; // Keep existing for conflict checking (backend filters)
+
+                // Merge Assignments
+                let finalAllocations = [...allocations];
+                const convertedAssignments = teacherAssignments.map(ta => {
+                    const normalize = (s: string) => s?.trim().toLowerCase() || '';
+                    const gradeId = grades.find(g => normalize(g.name) === normalize(ta.grade))?.id;
+                    const sectionId = sections.find(s => normalize(s.name) === normalize(ta.section))?.id;
+                    if (!gradeId || !sectionId) return null;
+                    return {
+                        id: ta.id,
+                        majorName: ta.major || null,
+                        groupName: (ta as any).group || null,
+                        schoolId: ta.schoolId,
+                        gradeId,
+                        sectionId,
+                        subjectId: ta.subjectId,
+                        teacherId: ta.teacherId,
+                        periodsPerWeek: ta.periodsPerWeek || 0,
+                        divisionId: selectedDivisionId // Explicit for current scope
+                    } as any;
+                }).filter(a => a !== null);
+
+                convertedAssignments.forEach(ca => {
+                    const exists = finalAllocations.some(ma =>
+                        ma.gradeId === ca.gradeId &&
+                        ma.sectionId === ca.sectionId &&
+                        ma.subjectId === ca.subjectId &&
+                        ma.teacherId === ca.teacherId
+                    );
+                    if (!exists) mergedAllocations.push(ca);
+                });
+            }
+
+            // 2. Prepare Payload
+            const activeSlotsWithNames = timeSlots.map(slot => ({ // Send ALL slots for selection scope
+                ...slot,
+                name: slot.name || `${slot.startTime} - ${slot.endTime}`
+            }));
+
+            // Validate Group-Division Mapping if groups are selected
+            if (selectedGroupIds.length > 0) {
+                const missingDivisions = selectedGroupIds.filter(gid => !groupDivisionMap[gid]);
+                if (missingDivisions.length > 0) {
+                    toast({ title: "Error", description: "Please assign a Bell Schedule (Division) to all selected groups.", variant: "destructive" });
+                    setIsGenerating(false);
+                    return;
+                }
+
+                // Attach divisionId to allocations based on Group Mapping
+                // Build Grade -> Group Map from Hierarchy
+                const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+                const gradeToGroupMap: { [gradeName: string]: string } = {};
+
+                if (selectedMajorName && hierarchy[selectedMajorName]) {
+                    Object.keys(hierarchy[selectedMajorName]).forEach(groupName => {
+                        Object.keys(hierarchy[selectedMajorName][groupName]).forEach(gradeName => {
+                            gradeToGroupMap[normalize(gradeName)] = groupName;
+                        });
+                    });
+                }
+
+                // Update Allocations with Division ID
+                mergedAllocations.forEach(alloc => {
+                    const gradeName = grades.find(g => g.id === alloc.gradeId)?.name;
+                    if (gradeName) {
+                        const groupName = gradeToGroupMap[normalize(gradeName)];
+                        if (groupName) {
+                            const groupId = groups.find(g => g.name === groupName)?.id;
+                            if (groupId && groupDivisionMap[groupId]) {
+                                (alloc as any).divisionId = groupDivisionMap[groupId];
+                            }
+                        }
+                    }
+                });
+            } else if (!selectedDivisionId && generationScope === 'current') {
+                toast("Please select a Division (Bell Schedule).", "destructive");
+                setIsGenerating(false);
+                return;
+            }
+
+            const requestRef = await addDoc(collection(db, 'timetable_requests'), {
+                schoolId,
+                status: 'pending',
+                progress: { current: 0, total: 0 },
+                createdAt: new Date().toISOString(),
+                allocations: mergedAllocations,
+                teachers: teachers.map(t => ({ uid: t.uid, name: t.name, unavailableSlots: t.unavailableSlots })),
+                timeSlots: activeSlotsWithNames, // Send ALL slots
+                allTimeSlots: activeSlotsWithNames,
+                existingEntries: existingEntriesForGen,
+                workingDays: workingDays,
+                scope: selectedGroupIds.length > 0 ? 'selection' : (generationScope === 'global' ? 'global' : 'division'),
+                scopeId: selectedGroupIds.length > 0 ? null : (generationScope === 'global' ? null : selectedDivisionId),
+                selection: selectedGroupIds.length > 0 ? {
+                    majorId: selectedMajorId,
+                    groupIds: selectedGroupIds,
+                    groupDivisionMap: groupDivisionMap
+                } : null,
+                divisions: divisions // Send divisions for reference
+            });
+
+            // 3. Listen for Updates
+            const unsubscribe = onSnapshot(requestRef, (snap) => {
+                const data = snap.data();
+                if (!data) return;
+
+                if (data.status === 'processing') {
+                    if (data.progress) setGenerationProgress(data.progress);
+                } else if (data.status === 'completed') {
+                    setGeneratedSchedule(data.result);
+                    setIsReviewModalOpen(true);
+                    setIsGenerating(false);
+                    unsubscribe();
+                } else if (data.status === 'error') {
+                    toast({ title: 'Generation Failed', description: data.error, variant: 'destructive' });
+                    setIsGenerating(false);
+                    unsubscribe();
+                }
+            });
+
+        } catch (error: any) {
+            console.error("Auto-generate error:", error);
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            setIsGenerating(false);
+        }
+    };
+
+    const handleAcceptSchedule = async () => {
+        // Save generated entries to Firestore
+        try {
+            const batch = writeBatch(db);
+            generatedSchedule.forEach(entry => {
+                const ref = doc(collection(db, 'timetableEntries'));
+
+                // Resolve Grade/Section Names (handle both ID and Name storage)
+                const gradeName = grades.find(g => g.id === entry.grade || g.name === entry.grade)?.name || entry.grade;
+                const sectionName = sections.find(s => s.id === entry.section || s.name === entry.section)?.name || entry.section;
+
+                if (!gradeName || !sectionName) {
+                    console.warn("Skipping invalid entry:", entry);
+                    return;
+                }
+
+                batch.set(ref, {
+                    ...entry,
+                    grade: gradeName,
+                    section: sectionName,
+                    schoolId,
+                    divisionId: entry.divisionId || selectedDivisionId, // Use generated divisionId first
+                    createdAt: new Date().toISOString()
+                });
+            });
+            await batch.commit();
+            setIsReviewModalOpen(false);
+            setGeneratedSchedule([]);
+            alert("Timetable saved successfully!");
+            // Reload page to fetch new entries
+            window.location.reload();
+        } catch (error) {
+            console.error("Error saving schedule:", error);
+            alert("Failed to save schedule.");
+        }
+    };
+
+    const workloadData = useMemo(() => {
+        return teachers.map(teacher => {
+            const workload = getTeacherWorkload(teacher.uid, allEntries);
+            return { teacher, workload };
+        });
+    }, [teachers, allEntries]);
+
+
+    const handleClearTimetable = async () => {
+        if (!confirm("Are you sure you want to delete ALL generated timetable entries? This cannot be undone.")) return;
+
+        setLoading(true);
+        try {
+            const batch = writeBatch(db);
+            const snapshot = await getDocs(query(collection(db, 'timetableEntries'), where('schoolId', '==', schoolId)));
+
+            if (snapshot.empty) {
+                alert("No timetable entries found to delete.");
+                setLoading(false);
+                return;
+            }
+
+            snapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            await batch.commit();
+            setAllEntries([]);
+            alert("Timetable cleared successfully.");
+        } catch (error) {
+            console.error("Error clearing timetable:", error);
+            alert("Failed to clear timetable.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const validateData = () => {
+        const errors: any[] = [];
+        let validCount = 0;
+
+        // Filter by Major if selected
+        const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+
+        console.log("Validation Debug:", {
+            selectedMajorId,
+            selectedMajorName,
+            totalAssignments: teacherAssignments.length,
+            sampleAssignment: teacherAssignments[0]
+        });
+
+        const assignmentsToValidate = selectedMajorId
+            ? teacherAssignments.filter(ta => {
+                // Loose matching for Major
+                const taMajor = (ta.major || '').trim().toLowerCase();
+                const selMajor = (selectedMajorName || '').trim().toLowerCase();
+                return taMajor === selMajor;
+            })
+            : teacherAssignments;
+
+        if (selectedMajorId && assignmentsToValidate.length === 0) {
+            alert(`No assignments found for Major: ${selectedMajorName}\n\nDebug: Checked ${teacherAssignments.length} total assignments.`);
+            return;
+        }
+
+        // 1. Check for Under-allocation (Gaps)
+        const totalSlotsPerWeek = workingDays.length * activeTimeSlots.filter(s => s.type === 'class').length;
+        const classAllocations = new Map<string, number>(); // "Grade-Section" -> totalPeriods
+
+        // Sum up allocations
+        allocations.forEach(a => {
+            const key = `${a.gradeId}-${a.sectionId}`;
+            classAllocations.set(key, (classAllocations.get(key) || 0) + a.periodsPerWeek);
+        });
+
+        // Check each class
+        sections.forEach(section => {
+            grades.forEach(grade => {
+                // Only check if this class actually exists/has data
+                const key = `${grade.id}-${section.id}`;
+                const totalAllocated = classAllocations.get(key) || 0;
+
+                // Skip if no allocations at all (maybe unused class)
+                if (totalAllocated === 0) return;
+
+                if (totalAllocated < totalSlotsPerWeek) {
+                    const missing = totalSlotsPerWeek - totalAllocated;
+                    errors.push({
+                        row: 0,
+                        teacher: 'N/A',
+                        subject: 'System Check',
+                        grade: grade.name,
+                        section: section.name,
+                        issues: [`Under-allocated: Assigned ${totalAllocated} periods, but week has ${totalSlotsPerWeek}. Expect ${missing} empty periods.`]
+                    });
+                }
+            });
+        });
+
+        assignmentsToValidate.forEach((ta, index) => {
+            const issues: string[] = [];
+            if (!ta.teacherId) issues.push('Missing Teacher ID');
+            if (!ta.subjectId) issues.push('Missing Subject ID');
+            if (!ta.grade) issues.push('Missing Grade Name');
+            if (!ta.section) issues.push('Missing Section Name');
+            if (!ta.periodsPerWeek || ta.periodsPerWeek <= 0) issues.push('Invalid Periods Per Week');
+
+            // Check references
+            // Robust normalization: lowercase, trim, and remove non-alphanumeric characters (to handle ' vs ’ vs none)
+            const normalize = (s: string) => s?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+
+            const gradeExists = grades.some(g => normalize(g.name) === normalize(ta.grade));
+            const sectionExists = sections.some(s => normalize(s.name) === normalize(ta.section));
+            const teacherExists = teachers.some(t => t.uid === ta.teacherId);
+
+            if (ta.grade && !gradeExists) {
+                // Debug hint
+                const availableGrades = grades.map(g => g.name).join(', ');
+                issues.push(`Grade '${ta.grade}' not found. Available: ${availableGrades.substring(0, 50)}...`);
+            }
+            if (ta.section && !sectionExists) {
+                // Debug hint
+                const availableSections = sections.map(s => s.name).join(', ');
+                issues.push(`Section '${ta.section}' not found. Available: ${availableSections.substring(0, 50)}...`);
+            }
+            if (ta.teacherId && !teacherExists) issues.push(`Teacher ID '${ta.teacherId}' not found in active teachers.`);
+
+            if (issues.length === 0) {
+                validCount++;
+            } else {
+                errors.push({
+                    row: index + 1, // This is relative to the filtered list, maybe confusing?
+                    teacher: ta.teacherName || 'Unknown',
+                    subject: ta.subjectName || 'Unknown',
+                    grade: ta.grade || '?',
+                    section: ta.section || '?',
+                    issues
+                });
+            }
+
+            if (false) {
+                // Check references
+                const normalize = (s: string) => s?.trim().toLowerCase() || '';
+                const gradeExists = grades.some(g => normalize(g.name) === normalize(ta.grade));
+                const sectionExists = sections.some(s => normalize(s.name) === normalize(ta.section));
+                const teacherExists = teachers.some(t => t.uid === ta.teacherId);
+
+                if (!gradeExists) errors.push(`Row ${index + 1}: Grade '${ta.grade}' not found in system.`);
+                if (!sectionExists) errors.push(`Row ${index + 1}: Section '${ta.section}' not found in system.`);
+                if (!teacherExists) errors.push(`Row ${index + 1}: Teacher '${ta.teacherName}' (ID: ${ta.teacherId}) not found in active teachers.`);
+
+                if (gradeExists && sectionExists && teacherExists) validCount++;
+            }
+        });
+
+        setValidationReport({
+            errors,
+            validCount,
+            totalCount: assignmentsToValidate.length,
+            scope: selectedMajorId ? `Major: ${selectedMajorName}` : "Global"
+        });
+        setIsValidationModalOpen(true);
+    };
+
+
+    const [activeTab, setActiveTab] = useState('manage');
+
+    // Memoize relevant classes for Class Master View (used in both UI and Print)
+    const relevantClasses = useMemo(() => {
+        let classes: { grade: Grade, section: Section }[] = [];
+
+        // If no hierarchy loaded, fallback or show nothing
+        if (!isHierarchyLoaded) return [];
+
+        const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+        const selectedGroupNames = selectedGroupIds.length > 0
+            ? groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name)
+            : [];
+
+        // Iterate Hierarchy to find matching classes
+        Object.keys(hierarchy).forEach(majorName => {
+            if (selectedMajorName && majorName !== selectedMajorName) return;
+
+            const majorGroups = hierarchy[majorName];
+            Object.keys(majorGroups).forEach(groupName => {
+                if (selectedGroupNames.length > 0 && !selectedGroupNames.includes(groupName)) return;
+
+                const groupGrades = majorGroups[groupName];
+                Object.keys(groupGrades).forEach(gradeName => {
+                    const gradeObj = grades.find(g => g.name === gradeName);
+                    if (!gradeObj) return;
+
+                    const sectionNames = groupGrades[gradeName];
+                    sectionNames.forEach(sectionName => {
+                        const sectionObj = sections.find(s => s.name === sectionName);
+                        if (sectionObj) {
+                            classes.push({ grade: gradeObj, section: sectionObj });
+                        }
+                    });
+                });
+            });
+        });
+
+        // Also include classes from Teacher Assignments and Allocations (even if no students)
+        const addFromAssignments = (list: any[]) => {
+            list.forEach(item => {
+                // Check filters
+                const majorMatch = !selectedMajorId || item.major === selectedMajorName || majors.find(m => m.id === selectedMajorId)?.name === item.major;
+
+                if (majorMatch) {
+                    const gradeObj = grades.find(g => g.name === item.grade || g.id === item.grade);
+                    const sectionObj = sections.find(s => normalize(s.name) === normalize(item.section) || s.id === item.section);
+
+                    if (gradeObj && sectionObj) {
+                        classes.push({ grade: gradeObj, section: sectionObj });
+                    }
+                }
+            });
+        };
+
+        addFromAssignments(teacherAssignments);
+        addFromAssignments(allocations);
+
+        // Deduplicate
+        const uniqueClasses = new Map<string, { grade: Grade, section: Section }>();
+        classes.forEach(item => {
+            const key = `${item.grade.id}-${item.section.id}`;
+            if (!uniqueClasses.has(key)) uniqueClasses.set(key, item);
+        });
+        classes = Array.from(uniqueClasses.values());
+
+        // Sort
+        classes.sort((a, b) => {
+            const g = a.grade.name.localeCompare(b.grade.name, undefined, { numeric: true });
+            if (g !== 0) return g;
+            return a.section.name.localeCompare(b.section.name, undefined, { numeric: true });
+        });
+
+        return classes;
+    }, [isHierarchyLoaded, hierarchy, majors, selectedMajorId, groups, selectedGroupIds, grades, sections, teacherAssignments, allocations]);
+
+    return (
+        <div className="space-y-6 print:p-0">
+            <style>{`
+                @media print {
+                    @page { size: A3 landscape; margin: 5mm; }
+                    body { -webkit-print-color-adjust: exact; }
+                    .break-after-page { page-break-after: always; break-after: page; }
+                }
+            `}</style>
+            <div className="flex flex-col gap-4 print:hidden">
+                <div className="flex justify-between items-center">
+                    <h1 className="text-3xl font-bold tracking-tight">Timetable Management</h1>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={validateData}>
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Validate Data
+                        </Button>
+                        <Button variant="destructive" onClick={handleClearTimetable}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Clear Timetable
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Unified Global Filter Bar */}
+                <div className="flex flex-wrap items-end gap-4 p-4 border rounded-lg bg-card shadow-sm">
+                    <div className="space-y-2 min-w-[200px]">
+                        <Label>Major</Label>
+                        <Select value={selectedMajorId} onChange={e => setSelectedMajorId(e.target.value)}>
+                            <option value="">Select Major</option>
+                            {majors.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </Select>
+                    </div>
+                    <div className="space-y-2 relative min-w-[200px]">
+                        <Label>Group</Label>
+                        <div
+                            className={`flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer ${!selectedMajorId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            onClick={() => selectedMajorId && setIsGroupDropdownOpen(!isGroupDropdownOpen)}
+                        >
+                            <span className="truncate">
+                                {selectedGroupIds.length === 0
+                                    ? "Select Groups"
+                                    : `${selectedGroupIds.length} Group${selectedGroupIds.length > 1 ? 's' : ''} Selected`}
+                            </span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 opacity-50"><path d="m6 9 6 6 6-6" /></svg>
+                        </div>
+                        {isGroupDropdownOpen && (
+                            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95">
+                                <div className="max-h-60 overflow-y-auto p-1">
+                                    {filteredGroups.map(g => (
+                                        <div
+                                            key={g.id}
+                                            className="flex items-center space-x-2 rounded-sm px-2 py-1.5 hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedGroupIds(prev =>
+                                                    prev.includes(g.id)
+                                                        ? prev.filter(id => id !== g.id)
+                                                        : [...prev, g.id]
+                                                );
+                                            }}
+                                        >
+                                            <div className={`flex h-4 w-4 items-center justify-center rounded-sm border border-primary ${selectedGroupIds.includes(g.id) ? 'bg-primary text-primary-foreground' : 'opacity-50 [&_svg]:invisible'}`}>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><polyline points="20 6 9 17 4 12" /></svg>
+                                            </div>
+                                            <span>{g.name}</span>
+                                        </div>
+                                    ))}
+                                    {filteredGroups.length === 0 && <div className="p-2 text-sm text-muted-foreground">No groups found</div>}
+                                </div>
+                            </div>
+                        )}
+                        {/* Overlay to close dropdown when clicking outside */}
+                        {isGroupDropdownOpen && <div className="fixed inset-0 z-40 bg-transparent" onClick={(e) => { e.stopPropagation(); setIsGroupDropdownOpen(false); }} />}
+                    </div>
+                    <div className="space-y-2 min-w-[200px]">
+                        <Label>Division (Bell Timings)</Label>
+                        {selectedGroupIds.length > 0 ? (
+                            <div className="space-y-2 border p-2 rounded-md bg-muted/20">
+                                <p className="text-xs text-muted-foreground mb-1">Assign Bell Timings to Groups:</p>
+                                {selectedGroupIds.map(groupId => {
+                                    const groupName = groups.find(g => g.id === groupId)?.name || 'Unknown Group';
+                                    return (
+                                        <div key={groupId} className="flex items-center justify-between gap-2">
+                                            <span className="text-xs font-medium truncate w-1/3" title={groupName}>{groupName}</span>
+                                            <Select
+                                                value={groupDivisionMap[groupId] || ''}
+                                                onChange={e => setGroupDivisionMap(prev => ({ ...prev, [groupId]: e.target.value }))}
+                                                className="h-8 text-xs flex-1"
+                                            >
+                                                <option value="">Select Timetable...</option>
+                                                {filteredDivisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                            </Select>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <Select value={selectedDivisionId} onChange={e => setSelectedDivisionId(e.target.value)}>
+                                <option value="">Select Division</option>
+                                {filteredDivisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </Select>
+                        )}
+                    </div>
+
+                    <div className="flex-1" />
+
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 mr-2">
+                            <Label className="whitespace-nowrap text-xs text-muted-foreground">Scope:</Label>
+                            <Select value={generationScope} onChange={e => setGenerationScope(e.target.value as 'current' | 'global')} className="w-[140px] h-9 text-sm">
+                                <option value="current">Current Division</option>
+                                <option value="global">All Divisions</option>
+                            </Select>
+                        </div>
+                        <Button onClick={handleAutoGenerate} disabled={isGenerating}>
+                            {isGenerating ? (
+                                <div className="flex flex-col items-center gap-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="animate-spin">✨</span>
+                                        <span>Generating... {generationProgress.total > 0 ? `${generationProgress.current}/${generationProgress.total}` : ''}</span>
+                                    </div>
+                                    {generationProgress.total > 0 ? (
+                                        <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-blue-500 transition-all duration-500"
+                                                style={{ width: `${(generationProgress.current / generationProgress.total) * 100}%` }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                                            <div className="h-full bg-blue-500 animate-pulse w-full" />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <>
+                                    <span className="mr-2">✨</span> Auto-Generate
+                                </>
+                            )}
+                        </Button>
+                        <div className="flex items-center border rounded-md overflow-hidden bg-background">
+                            <Button variant="ghost" className="rounded-none border-r px-3 h-9" onClick={handlePrint} title="Print Current View">
+                                Print View
+                            </Button>
+                            <Button variant="ghost" className="rounded-none border-r px-3 h-9" onClick={handlePrintBatchTeachers} title="Print All Teachers">
+                                All Teachers
+                            </Button>
+                            <Button variant="ghost" className="rounded-none px-3 h-9" onClick={handlePrintBatchClasses} title="Print All Classes">
+                                All Classes
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div >
+
+            <div className="print:hidden">
+                <Tabs defaultValue="manage" onValueChange={setActiveTab}>
+                    <TabsList>
+                        <TabsTrigger value="manage">Manage Timetables</TabsTrigger>
+                        <TabsTrigger value="teacher-master">Teacher Master View</TabsTrigger>
+                        <TabsTrigger value="class-master">Class Master View</TabsTrigger>
+                        <TabsTrigger value="workload">Teacher Workload</TabsTrigger>
+                        <TabsTrigger value="settings">Settings</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="manage" className="space-y-6">
+                        {/* Class Filters */}
+                        {/* Class Filters Sub-Bar */}
+                        <div className="flex flex-wrap items-end gap-4 p-4 border rounded-lg bg-muted/30">
+                            <div className="space-y-2 min-w-[200px]">
+                                <Label>Grade</Label>
+                                <Select value={selectedGradeId} onChange={e => setSelectedGradeId(e.target.value)} disabled={selectedGroupIds.length === 0}>
+                                    <option value="">Select Grade</option>
+                                    {filteredGrades.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                </Select>
+                            </div>
+                            <div className="space-y-2 min-w-[200px]">
+                                <Label>Section</Label>
+                                <Select value={selectedSectionId} onChange={e => setSelectedSectionId(e.target.value)} disabled={!selectedGradeId}>
+                                    <option value="">Select Section</option>
+                                    {filteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </Select>
+                            </div>
+
+                            {!selectedGradeId && (
+                                <div className="flex items-center text-sm text-muted-foreground pb-2 h-10">
+                                    <span className="mr-2">ℹ️</span> Select a Grade and Section to view or edit the timetable.
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Timetable Grid */}
+                        {selectedGradeId && selectedSectionId ? (
+                            <Card className="overflow-hidden">
+                                <CardContent className="p-0">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse text-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th className="border p-2 bg-muted/50 w-24">Day / Time</th>
+                                                    {activeTimeSlots.map(slot => (
+                                                        <th key={slot.id} className="border p-2 bg-muted/50 min-w-[150px]">
+                                                            <div className="font-medium">{slot.name}</div>
+                                                            <div className="text-xs text-muted-foreground">{slot.startTime} - {slot.endTime}</div>
+                                                            <div className="text-xs uppercase text-muted-foreground/70">{slot.type}</div>
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {workingDays.map(day => (
+                                                    <tr key={day}>
+                                                        <td className="border p-2 font-medium bg-muted/20">{day}</td>
+                                                        {activeTimeSlots.map(slot => {
+                                                            const entry = currentClassEntries.find(e => e.day === day && e.timeSlotId === slot.id);
+                                                            const isBreak = slot.type === 'break';
+
+                                                            return (
+                                                                <td
+                                                                    key={slot.id}
+                                                                    className={`border p - 2 relative ${isBreak ? 'bg-secondary/30' : 'hover:bg-accent/20 cursor-pointer'} `}
+                                                                    onClick={() => !isBreak && handleCellClick(day, slot.id)}
+                                                                >
+                                                                    {isBreak ? (
+                                                                        <div className="text-center text-muted-foreground italic">Break</div>
+                                                                    ) : entry ? (
+                                                                        <div className="space-y-1">
+                                                                            <div className="font-semibold text-primary">
+                                                                                {subjects.find(s => s.id === entry.subjectId)?.name || 'Unknown Subject'}
+                                                                            </div>
+                                                                            <div className="text-xs">
+                                                                                {teachers.find(t => t.uid === entry.teacherId)?.name || 'Unknown Teacher'}
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-center text-muted-foreground/50 text-xs py-4">
+                                                                            + Assign
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="text-center p-10 text-muted-foreground">
+                                Please select Division, Major, Grade, and Section to view the timetable.
+                            </div>
+                        )}
+
+                        {/* Debug Info */}
+                        <div className="mt-8 p-4 border rounded bg-muted/10 text-xs font-mono">
+                            <h4 className="font-bold mb-2">Debug Info</h4>
+                            <p>Total Entries: {allEntries.length}</p>
+                            <p>Selected Grade: {selectedGradeId} ({grades.find(g => g.id === selectedGradeId)?.name})</p>
+                            <p>Selected Section: {selectedSectionId} ({sections.find(s => s.id === selectedSectionId)?.name})</p>
+                            <p>Filtered Entries: {currentClassEntries.length}</p>
+                            <p>Active Time Slots: {activeTimeSlots.length}</p>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="workload">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Teacher Workload</CardTitle>
+                                <CardDescription>Total periods assigned per day.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-md border overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-muted/50 border-b">
+                                            <tr>
+                                                <th className="p-3 text-left font-medium">Teacher</th>
+                                                {workingDays.map(day => <th key={day} className="p-3 text-center font-medium">{day.substring(0, 3)}</th>)}
+                                                <th className="p-3 text-center font-medium">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {workloadData.map(({ teacher, workload }) => (
+                                                <tr key={teacher.uid} className="border-b last:border-0 hover:bg-muted/20">
+                                                    <td className="p-3 font-medium">{teacher.name}</td>
+                                                    {workingDays.map(day => {
+                                                        const count = workload[day] || 0;
+                                                        return (
+                                                            <td key={day} className={`p - 3 text - center ${count >= 7 ? 'text-destructive font-bold' : ''} `}>
+                                                                {count}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td className="p-3 text-center font-bold">{workload.total}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="teacher-master">
+                        <Card>
+                            <CardHeader>
+                                <div className="flex justify-between items-center">
+                                    <CardTitle>Teacher Master View</CardTitle>
+                                    <Button variant="outline" size="sm" onClick={refreshData}>Refresh Data</Button>
+                                </div>
+                                <CardDescription>Comprehensive view of all teacher schedules.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {!selectedDivisionId ? (
+                                    <div className="text-center p-10 text-muted-foreground">
+                                        Please select a Division (Bell Schedule) above to view the master timetable.
+                                    </div>
+                                ) : (
+                                    <div className="rounded-md border overflow-x-auto">
+                                        <table className="w-full text-xs border-collapse">
+                                            <thead>
+                                                {/* DEBUG INFO - REMOVE AFTER FIXING */}
+                                                <tr>
+                                                    <td colSpan={100} className="p-2 bg-yellow-100 text-xs font-mono">
+                                                        DEBUG: Teachers: {teachers.length} |
+                                                        Filtered Grades: {filteredGrades.length} |
+                                                        Allocations (Manual): {allocations.length} |
+                                                        Effective: {allocations.length + teacherAssignments.length} |
+                                                        Entries: {allEntries.length} |
+                                                        First Grade ID: {filteredGrades[0]?.id}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <th className="border p-2 bg-muted/50 font-bold sticky left-0 z-20 min-w-[150px]" rowSpan={2}>Teacher Name</th>
+                                                    {workingDays.map(day => (
+                                                        <th key={day} className="border p-2 bg-muted/50 font-bold text-center" colSpan={activeTimeSlots.length}>
+                                                            {day}
+                                                        </th>
+                                                    ))}
+                                                    <th className="border p-2 bg-muted/50 font-bold text-center min-w-[60px]" rowSpan={2}>Total</th>
+                                                </tr>
+                                                <tr>
+                                                    {workingDays.map(day => (
+                                                        activeTimeSlots.map(slot => (
+                                                            <th key={`${day}-${slot.id}`} className="border p-1 bg-muted/30 text-center min-w-[60px] whitespace-nowrap">
+                                                                {slot.name}
+                                                            </th>
+                                                        ))
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {teachers
+                                                    .filter(t => {
+                                                        // If no grades are filtered (e.g. no Major/Group selected, or just Major selected but no Group), show all teachers
+                                                        if (filteredGrades.length === 0) return true;
+
+                                                        // Filter teachers who have assignments in the current Major/Group context
+                                                        const tAssignments = teacherAssignments.filter(ta => ta.teacherId === t.uid);
+
+                                                        // Check if any assignment belongs to a Grade in the filtered list (which respects Major/Group)
+                                                        const hasRelevantAssignment = tAssignments.some(ta => {
+                                                            return filteredGrades.some(fg => fg.name === ta.grade);
+                                                        });
+
+                                                        // Also include if they have manual allocations in this context
+                                                        const hasAllocation = allocations.some(a =>
+                                                            a.teacherId === t.uid &&
+                                                            filteredGrades.some(fg => fg.id === a.gradeId)
+                                                        );
+
+                                                        // Also include if they have generated entries in this context
+                                                        const hasEntries = allEntries.some(e =>
+                                                            e.teacherId === t.uid &&
+                                                            filteredGrades.some(fg => fg.name === e.grade || fg.id === e.grade)
+                                                        );
+
+                                                        const isKept = hasRelevantAssignment || hasAllocation || hasEntries;
+
+                                                        return isKept;
+                                                    })
+                                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                                    .map(teacher => (
+                                                        <tr key={teacher.uid} className="hover:bg-muted/10">
+                                                            <td className="border p-2 font-medium sticky left-0 bg-background z-10">
+                                                                <div className="flex justify-between items-center gap-2">
+                                                                    <span className="font-semibold">{teacher.name}</span>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 w-7 p-0 border-gray-400"
+                                                                        onClick={() => handleOpenConstraints(teacher)}
+                                                                        title="Manage Time Off"
+                                                                    >
+                                                                        <Clock className="h-4 w-4 text-blue-600" />
+                                                                    </Button>
+                                                                </div>
+                                                            </td>
+                                                            {workingDays.map(day => (
+                                                                activeTimeSlots.map(slot => {
+                                                                    const entry = allEntries.find(e =>
+                                                                        e.teacherId === teacher.uid &&
+                                                                        e.day === day &&
+                                                                        e.timeSlotId === slot.id
+                                                                    );
+                                                                    const isBreak = slot.type === 'break';
+
+                                                                    return (
+                                                                        <td key={`${day}-${slot.id}`} className={`border p-1 text-center ${isBreak ? 'bg-secondary/30' : ''}`}>
+                                                                            {isBreak ? (
+                                                                                <span className="text-muted-foreground/50">-</span>
+                                                                            ) : entry ? (
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="font-bold text-primary">
+                                                                                        {/* Resolve names if stored as IDs, or use as is */}
+                                                                                        {grades.find(g => g.id === entry.grade)?.name || entry.grade}
+                                                                                        -
+                                                                                        {sections.find(s => s.id === entry.section)?.name || entry.section}
+                                                                                    </span>
+                                                                                    <span className="text-[10px] text-muted-foreground truncate max-w-[50px] mx-auto">
+                                                                                        {subjects.find(s => s.id === entry.subjectId)?.name || 'Unknown'}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : null}
+                                                                        </td>
+                                                                    );
+                                                                })
+                                                            ))}
+                                                            <td className="border p-2 font-bold text-center bg-muted/20">
+                                                                {allEntries.filter(e => e.teacherId === teacher.uid).length}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="class-master">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Class Master View</CardTitle>
+                                <CardDescription>Comprehensive view of all class schedules.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {/* Filters for Class Master View */}
+                                <div className="flex gap-4 mb-4">
+                                    <div className="w-1/3">
+                                        <Label>Major</Label>
+                                        <Select value={selectedMajorId} onChange={e => setSelectedMajorId(e.target.value)}>
+                                            <option value="">All Majors</option>
+                                            {majors.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        </Select>
+                                    </div>
+                                    <div className="w-1/3">
+                                        <Label>Group</Label>
+                                        <Select value={selectedGroupIds[0] || ''} onChange={e => setSelectedGroupIds(e.target.value ? [e.target.value] : [])}>
+                                            <option value="">All Groups</option>
+                                            {filteredGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                {!selectedDivisionId ? (
+                                    <div className="text-center p-10 text-muted-foreground">
+                                        Please select a Division (Bell Schedule) to view the timetable grid.
+                                    </div>
+                                ) : (
+                                    <div className="rounded-md border overflow-x-auto max-h-[70vh]">
+                                        <table className="w-full text-sm border-collapse">
+                                            <thead className="bg-muted/50 sticky top-0 z-20">
+                                                <tr>
+                                                    <th className="border p-2 text-left font-medium min-w-[150px] sticky left-0 bg-muted/50 z-30">Class</th>
+                                                    {workingDays.map(day => (
+                                                        <th key={day} colSpan={activeTimeSlots.length} className="border p-2 text-center font-bold bg-muted/30">
+                                                            {day}
+                                                        </th>
+                                                    ))}
+                                                    <th className="border p-2 text-center font-bold bg-muted/30 min-w-[60px]" rowSpan={2}>Total</th>
+                                                </tr>
+                                                <tr>
+                                                    <th className="border p-2 sticky left-0 bg-muted/50 z-30"></th>
+                                                    {workingDays.map(day => (
+                                                        activeTimeSlots.map(slot => (
+                                                            <th key={`${day}-${slot.id}`} className="border p-1 text-center text-xs font-normal min-w-[80px]">
+                                                                {slot.name}<br />
+                                                                <span className="text-[10px] text-muted-foreground">{slot.startTime}-{slot.endTime}</span>
+                                                            </th>
+                                                        ))
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {/* Generate Rows for each Grade-Section */}
+                                                {(() => {
+                                                    // Helper to get all grades/sections from hierarchy based on filters
+                                                    let relevantClasses: { grade: Grade, section: Section }[] = [];
+
+                                                    // If no hierarchy loaded, fallback or show nothing
+                                                    if (!isHierarchyLoaded) return <tr><td colSpan={100} className="p-4 text-center">Loading hierarchy...</td></tr>;
+
+                                                    const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+                                                    const selectedGroupNames = selectedGroupIds.length > 0
+                                                        ? groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name)
+                                                        : [];
+
+                                                    // Iterate Hierarchy to find matching classes
+                                                    Object.keys(hierarchy).forEach(majorName => {
+                                                        if (selectedMajorName && majorName !== selectedMajorName) return;
+
+                                                        const majorGroups = hierarchy[majorName];
+                                                        Object.keys(majorGroups).forEach(groupName => {
+                                                            if (selectedGroupNames.length > 0 && !selectedGroupNames.includes(groupName)) return;
+
+                                                            const groupGrades = majorGroups[groupName];
+                                                            Object.keys(groupGrades).forEach(gradeName => {
+                                                                const gradeObj = grades.find(g => g.name === gradeName);
+                                                                if (!gradeObj) return;
+
+                                                                const sectionNames = groupGrades[gradeName];
+                                                                sectionNames.forEach(sectionName => {
+                                                                    const sectionObj = sections.find(s => s.name === sectionName);
+                                                                    if (sectionObj) {
+                                                                        relevantClasses.push({ grade: gradeObj, section: sectionObj });
+                                                                    }
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+
+                                                    // Also include classes from Teacher Assignments and Allocations (even if no students)
+                                                    const addFromAssignments = (list: any[]) => {
+                                                        list.forEach(item => {
+                                                            // Check filters
+                                                            const majorMatch = !selectedMajorId || item.major === selectedMajorName || majors.find(m => m.id === selectedMajorId)?.name === item.major;
+
+                                                            if (majorMatch) {
+                                                                const gradeObj = grades.find(g => g.name === item.grade || g.id === item.grade);
+                                                                const sectionObj = sections.find(s => normalize(s.name) === normalize(item.section) || s.id === item.section);
+
+                                                                if (gradeObj && sectionObj) {
+                                                                    relevantClasses.push({ grade: gradeObj, section: sectionObj });
+                                                                }
+                                                            }
+                                                        });
+                                                    };
+
+                                                    addFromAssignments(teacherAssignments);
+                                                    addFromAssignments(allocations);
+
+                                                    // Deduplicate
+                                                    const uniqueClasses = new Map<string, { grade: Grade, section: Section }>();
+                                                    relevantClasses.forEach(item => {
+                                                        const key = `${item.grade.id}-${item.section.id}`;
+                                                        if (!uniqueClasses.has(key)) uniqueClasses.set(key, item);
+                                                    });
+                                                    relevantClasses = Array.from(uniqueClasses.values());
+
+                                                    // Sort
+                                                    relevantClasses.sort((a, b) => {
+                                                        const g = a.grade.name.localeCompare(b.grade.name, undefined, { numeric: true });
+                                                        if (g !== 0) return g;
+                                                        return a.section.name.localeCompare(b.section.name, undefined, { numeric: true });
+                                                    });
+
+                                                    if (relevantClasses.length === 0) {
+                                                        return <tr><td colSpan={100} className="p-4 text-center">No classes found matching criteria.</td></tr>;
+                                                    }
+
+                                                    return relevantClasses.map(({ grade, section }) => (
+                                                        <tr key={`${grade.id}-${section.id}`} className="hover:bg-muted/10">
+                                                            <td className="border p-2 font-medium sticky left-0 bg-background z-10">
+                                                                {grade.name} - {section.name}
+                                                            </td>
+                                                            {workingDays.map(day => (
+                                                                activeTimeSlots.map(slot => {
+                                                                    const entry = allEntries.find(e =>
+                                                                        (e.grade === grade.id || e.grade === grade.name) &&
+                                                                        (e.section === section.id || e.section === section.name) &&
+                                                                        e.day === day &&
+                                                                        e.timeSlotId === slot.id
+                                                                    );
+                                                                    const isBreak = slot.type === 'break';
+
+                                                                    return (
+                                                                        <td key={`${day}-${slot.id}`} className={`border p-1 text-center ${isBreak ? 'bg-secondary/30' : ''}`}>
+                                                                            {isBreak ? (
+                                                                                <span className="text-muted-foreground/50">-</span>
+                                                                            ) : entry ? (
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="font-bold text-primary text-xs">
+                                                                                        {subjects.find(s => s.id === entry.subjectId)?.name || 'Unknown'}
+                                                                                    </span>
+                                                                                    <span className="text-[10px] text-muted-foreground truncate max-w-[60px] mx-auto">
+                                                                                        {teachers.find(t => t.uid === entry.teacherId)?.name || 'Unassigned'}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : null}
+                                                                        </td>
+                                                                    );
+                                                                })
+                                                            ))}
+                                                            <td className="border p-2 font-bold text-center bg-muted/20">
+                                                                {allEntries.filter(e =>
+                                                                    (e.grade === grade.id || e.grade === grade.name) &&
+                                                                    (e.section === section.id || e.section === section.name)
+                                                                ).length}
+                                                            </td>
+                                                        </tr>
+                                                    ));
+                                                })()
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="settings" className="space-y-6">
+                        <Card>
+                            <CardHeader><CardTitle>School Week</CardTitle></CardHeader>
+                            <CardContent>
+                                <div className="flex flex-wrap gap-4">
+                                    {DAYS.map(day => (
+                                        <label key={day} className="flex items-center space-x-2">
+                                            <Input type="checkbox" checked={workingDays.includes(day)} onChange={() => handleWorkingDayChange(day)} className="h-4 w-4" />
+                                            <span>{day}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <div className="flex justify-end mt-4">
+                                    <Button onClick={saveWorkingDays}>Save Week</Button>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Academic Structure Sync</CardTitle>
+                                <CardDescription>
+                                    Automatically create Majors and Groups based on existing Student/Teacher profiles.
+                                    Use this if your dropdowns are empty.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Button onClick={handleSyncStructure} disabled={loading}>
+                                    {loading ? 'Syncing...' : 'Sync Majors & Groups'}
+                                </Button>
+                            </CardContent>
+                        </Card>
+
+                        <div className="grid grid-cols-1 gap-6">
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <CardTitle>School Divisions</CardTitle>
+                                    <Button size="sm" onClick={() => { setSelectedDivision(null); setIsDivisionModalOpen(true); }}>Add Division</Button>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                    {divisions.map(div => (
+                                        <div key={div.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/50">
+                                            <p>{div.name}</p>
+                                            <div className="space-x-1">
+                                                <Button variant="ghost" size="sm" onClick={() => { setSelectedDivision(div); setIsDivisionModalOpen(true); }}>Edit</Button>
+                                                <Button variant="destructive" size="sm" onClick={() => setItemToDelete({ type: 'division', data: div })}>Delete</Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle>Bell Timings / Periods</CardTitle>
+                                    <CardDescription>Define the time slots for each division.</CardDescription>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Select value={selectedDivisionId} onChange={e => setSelectedDivisionId(e.target.value)} className="w-48">
+                                        <option value="">Select Division</option>
+                                        {divisions.map(div => <option key={div.id} value={div.id}>{div.name}</option>)}
+                                    </Select>
+                                    <Button size="sm" onClick={() => { setSelectedTimeSlot(null); setIsTimeSlotModalOpen(true); }} disabled={!selectedDivisionId}>Add Period</Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="rounded-md border">
+                                    <table className="w-full text-sm">
+                                        <thead className="border-b"><tr className="text-left"><th className="p-2">Period Name</th><th className="p-2">Start Time</th><th className="p-2">End Time</th><th className="p-2">Type</th><th className="p-2 text-right">Actions</th></tr></thead>
+                                        <tbody>
+                                            {activeTimeSlots.map(ts => (
+                                                <tr key={ts.id} className="border-b">
+                                                    <td className="p-2 font-medium">{ts.name}</td>
+                                                    <td className="p-2">{ts.startTime}</td>
+                                                    <td className="p-2">{ts.endTime}</td>
+                                                    <td className="p-2 capitalize">{ts.type}</td>
+                                                    <td className="p-2 text-right space-x-1">
+                                                        <Button variant="outline" size="sm" onClick={() => { setSelectedTimeSlot(ts); setIsTimeSlotModalOpen(true); }}>Edit</Button>
+                                                        <Button variant="destructive" size="sm" onClick={() => setItemToDelete({ type: 'timeslot', data: ts })}>Delete</Button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {activeTimeSlots.length === 0 && <p className="text-center text-muted-foreground p-4">No periods defined for this division yet.</p>}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
+            </div>
+
+            {/* Print View (Visible only when printing) */}
+            <div className="hidden print:block space-y-4 p-4" style={{ backgroundColor: 'white', color: 'black' }}>
+                {printMode === 'single' && (
+                    activeTab === 'class-master' ? (
+                        // Class Master View Print Layout
+                        <div>
+                            <div className="text-center border-b pb-4 mb-4" style={{ borderBottom: '2px solid black' }}>
+                                <h1 className="text-2xl font-bold" style={{ color: 'black' }}>Class Master Timetable</h1>
+                                <p className="text-lg" style={{ color: 'black' }}>
+                                    {majors.find(m => m.id === selectedMajorId)?.name || 'All Majors'}
+                                    {selectedGroupIds.length > 0 && ` - ${groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name).join(', ')}`}
+                                </p>
+                            </div>
+
+                            {!selectedDivisionId ? (
+                                <div className="text-center p-10 border border-black border-dashed">
+                                    <p>Please select a Division (Bell Schedule) to print the master timetable.</p>
+                                </div>
+                            ) : (
+                                <table className="w-full border-collapse text-xs" style={{ border: '1px solid black', width: '100%', fontSize: '10px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ border: '1px solid black', padding: '4px', backgroundColor: '#f0f0f0', color: 'black', width: '120px' }} rowSpan={2}>Class</th>
+                                            {workingDays.map(day => (
+                                                <th key={day} colSpan={activeTimeSlots.length} style={{ border: '1px solid black', padding: '4px', backgroundColor: '#f0f0f0', color: 'black', textAlign: 'center' }}>
+                                                    {day}
+                                                </th>
+                                            ))}
+                                            <th style={{ border: '1px solid black', padding: '4px', backgroundColor: '#f0f0f0', color: 'black', width: '40px' }} rowSpan={2}>Total</th>
+                                        </tr>
+                                        <tr>
+                                            {workingDays.map(day => (
+                                                activeTimeSlots.map(slot => (
+                                                    <th key={`${day}-${slot.id}`} style={{ border: '1px solid black', padding: '2px', backgroundColor: '#fafafa', color: 'black', textAlign: 'center', minWidth: '60px' }}>
+                                                        {slot.name}
+                                                        <div style={{ fontSize: '8px', fontWeight: 'normal' }}>{slot.startTime}-{slot.endTime}</div>
+                                                    </th>
+                                                ))
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {relevantClasses.length === 0 ? (
+                                            <tr><td colSpan={100} style={{ padding: '20px', textAlign: 'center', border: '1px solid black' }}>No classes found matching criteria.</td></tr>
+                                        ) : (
+                                            relevantClasses.map(({ grade, section }) => (
+                                                <tr key={`${grade.id}-${section.id}`}>
+                                                    <td style={{ border: '1px solid black', padding: '4px', fontWeight: 'bold', backgroundColor: '#fff', color: 'black' }}>
+                                                        {grade.name} - {section.name}
+                                                    </td>
+                                                    {workingDays.map(day => (
+                                                        activeTimeSlots.map(slot => {
+                                                            const entry = allEntries.find(e =>
+                                                                (e.grade === grade.id || e.grade === grade.name) &&
+                                                                (e.section === section.id || e.section === section.name) &&
+                                                                e.day === day &&
+                                                                e.timeSlotId === slot.id
+                                                            );
+                                                            const isBreak = slot.type === 'break';
+                                                            return (
+                                                                <td key={`${day}-${slot.id}`} style={{ border: '1px solid black', padding: '2px', textAlign: 'center', color: 'black', backgroundColor: isBreak ? '#eee' : 'white' }}>
+                                                                    {isBreak ? "-" : entry ? (
+                                                                        <div>
+                                                                            <div style={{ fontWeight: 'bold', fontSize: '9px' }}>{subjects.find(s => s.id === entry.subjectId)?.name || 'Unknown'}</div>
+                                                                            <div style={{ fontSize: '8px', color: '#444' }}>{teachers.find(t => t.uid === entry.teacherId)?.name || 'Unassigned'}</div>
+                                                                        </div>
+                                                                    ) : null}
+                                                                </td>
+                                                            );
+                                                        })
+                                                    ))}
+                                                    <td style={{ border: '1px solid black', padding: '4px', fontWeight: 'bold', textAlign: 'center', backgroundColor: '#f0f0f0', color: 'black' }}>
+                                                        {allEntries.filter(e =>
+                                                            (e.grade === grade.id || e.grade === grade.name) &&
+                                                            (e.section === section.id || e.section === section.name)
+                                                        ).length}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    ) : (
+                        // Single Class Print Layout (Default / Manage Tab)
+                        <div>
+                            <div className="text-center border-b pb-4 mb-4" style={{ borderBottom: '2px solid black' }}>
+                                <h1 className="text-2xl font-bold" style={{ color: 'black' }}>Class Timetable</h1>
+                                <p className="text-lg" style={{ color: 'black' }}>
+                                    {grades.find(g => g.id === selectedGradeId)?.name || selectedGradeId || 'Grade'} - {sections.find(s => s.id === selectedSectionId)?.name || selectedSectionId || 'Section'}
+                                </p>
+                                <p className="text-sm" style={{ color: '#666' }}>{majors.find(m => m.id === selectedMajorId)?.name}</p>
+                            </div>
+                            {selectedDivisionId && selectedGradeId && selectedSectionId ? (
+                                <table className="w-full border-collapse text-sm" style={{ border: '1px solid black', width: '100%' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black', width: '100px' }}>Day / Time</th>
+                                            {activeTimeSlots.map(slot => (
+                                                <th key={slot.id} style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black' }}>
+                                                    <div className="font-bold">{slot.name}</div>
+                                                    <div className="text-xs">{slot.startTime} - {slot.endTime}</div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {workingDays.map(day => (
+                                            <tr key={day}>
+                                                <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#fafafa', color: 'black' }}>{day}</td>
+                                                {activeTimeSlots.map(slot => {
+                                                    const entry = currentClassEntries.find(e => e.day === day && e.timeSlotId === slot.id);
+                                                    const isBreak = slot.type === 'break';
+                                                    return (
+                                                        <td key={slot.id} style={{ border: '1px solid black', padding: '8px', textAlign: 'center', color: 'black' }}>
+                                                            {isBreak ? "BREAK" : entry ? (
+                                                                <div>
+                                                                    <div className="font-bold">{subjects.find(s => s.id === entry.subjectId)?.name}</div>
+                                                                    <div className="text-xs">{teachers.find(t => t.uid === entry.teacherId)?.name}</div>
+                                                                </div>
+                                                            ) : "-"}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="text-center p-10 border border-black border-dashed">
+                                    <p>Please select a Grade and Section to print the timetable.</p>
+                                    <p className="text-xs text-gray-500">Debug: G={selectedGradeId} S={selectedSectionId} D={selectedDivisionId}</p>
+                                </div>
+                            )}
+                        </div>
+                    )
+                )}
+
+                {printMode === 'batch-teachers' && (
+                    <div className="flex flex-col">
+                        {teachers.map(teacher => (
+                            <div key={teacher.uid} className="w-full h-screen flex flex-col p-8 break-after-page">
+                                <div className="text-center border-b pb-4 mb-4" style={{ borderBottom: '2px solid black' }}>
+                                    <h1 className="text-2xl font-bold" style={{ color: 'black' }}>Teacher Timetable</h1>
+                                    <p className="text-lg" style={{ color: 'black' }}>{teacher.name}</p>
+                                </div>
+                                <table className="w-full border-collapse text-sm" style={{ border: '1px solid black', width: '100%' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black', width: '100px' }}>Day / Time</th>
+                                            {activeTimeSlots.map(slot => (
+                                                <th key={slot.id} style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black' }}>
+                                                    <div className="font-bold">{slot.name}</div>
+                                                    <div className="text-xs">{slot.startTime} - {slot.endTime}</div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {workingDays.map(day => (
+                                            <tr key={day}>
+                                                <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#fafafa', color: 'black' }}>{day}</td>
+                                                {activeTimeSlots.map(slot => {
+                                                    const entry = allEntries.find(e => e.teacherId === teacher.uid && e.day === day && e.timeSlotId === slot.id);
+                                                    const isBreak = slot.type === 'break';
+                                                    return (
+                                                        <td key={slot.id} style={{ border: '1px solid black', padding: '8px', textAlign: 'center', color: 'black' }}>
+                                                            {isBreak ? "BREAK" : entry ? (
+                                                                <div>
+                                                                    <div className="font-bold">{subjects.find(s => s.id === entry.subjectId)?.name}</div>
+                                                                    <div className="text-xs">{entry.grade} - {entry.section}</div>
+                                                                </div>
+                                                            ) : "-"}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {printMode === 'batch-classes' && (
+                    <div className="flex flex-col">
+                        {relevantClasses.map(cls => (
+                            <div key={`${cls.grade.id}-${cls.section.id}`} className="w-full h-screen flex flex-col p-8 break-after-page">
+                                <div className="text-center border-b pb-4 mb-4" style={{ borderBottom: '2px solid black' }}>
+                                    <h1 className="text-2xl font-bold" style={{ color: 'black' }}>Class Timetable</h1>
+                                    <p className="text-lg" style={{ color: 'black' }}>{cls.grade.name} - {cls.section.name}</p>
+                                </div>
+                                <table className="w-full border-collapse text-sm" style={{ border: '1px solid black', width: '100%' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black', width: '100px' }}>Day / Time</th>
+                                            {activeTimeSlots.map(slot => (
+                                                <th key={slot.id} style={{ border: '1px solid black', padding: '8px', backgroundColor: '#f0f0f0', color: 'black' }}>
+                                                    <div className="font-bold">{slot.name}</div>
+                                                    <div className="text-xs">{slot.startTime} - {slot.endTime}</div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {workingDays.map(day => (
+                                            <tr key={day}>
+                                                <td style={{ border: '1px solid black', padding: '8px', fontWeight: 'bold', backgroundColor: '#fafafa', color: 'black' }}>{day}</td>
+                                                {activeTimeSlots.map(slot => {
+                                                    const entry = allEntries.find(e =>
+                                                        (e.grade === cls.grade.id || e.grade === cls.grade.name) &&
+                                                        (e.section === cls.section.id || e.section === cls.section.name) &&
+                                                        e.day === day &&
+                                                        e.timeSlotId === slot.id
+                                                    );
+                                                    const isBreak = slot.type === 'break';
+                                                    return (
+                                                        <td key={slot.id} style={{ border: '1px solid black', padding: '8px', textAlign: 'center', color: 'black' }}>
+                                                            {isBreak ? "BREAK" : entry ? (
+                                                                <div>
+                                                                    <div className="font-bold">{subjects.find(s => s.id === entry.subjectId)?.name}</div>
+                                                                    <div className="text-xs">{teachers.find(t => t.uid === entry.teacherId)?.name}</div>
+                                                                </div>
+                                                            ) : "-"}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Edit Modal / Popover */}
+            {
+                editingCell && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 print:hidden">
+                        <div className="bg-background p-6 rounded-lg shadow-lg w-full max-w-md space-y-4">
+                            <h3 className="text-lg font-bold">Assign Period</h3>
+                            <p className="text-sm text-muted-foreground">
+                                {editingCell.day} - {timeSlots.find(ts => ts.id === editingCell.timeSlotId)?.name}
+                            </p>
+
+                            <div className="space-y-3">
+                                <div className="space-y-1">
+                                    <Label>Subject</Label>
+                                    <Select
+                                        value={tempEntry.subjectId || ''}
+                                        onChange={e => {
+                                            const newSubjectId = e.target.value;
+                                            // Auto-select teacher based on allocation
+                                            const alloc = currentClassAllocations.find(a => a.subjectId === newSubjectId);
+                                            setTempEntry(prev => ({
+                                                ...prev,
+                                                subjectId: newSubjectId,
+                                                teacherId: alloc ? alloc.teacherId : prev.teacherId
+                                            }));
+                                        }}
+                                    >
+                                        <option value="">Select Subject</option>
+                                        {subjects.map(s => {
+                                            const alloc = currentClassAllocations.find(a => a.subjectId === s.id);
+                                            const assignedCount = currentClassEntries.filter(e => e.subjectId === s.id).length;
+                                            const target = alloc?.periodsPerWeek || 0;
+                                            const progress = target > 0 ? `(${assignedCount} / ${target})` : '';
+
+                                            return <option key={s.id} value={s.id}>{s.name} {progress}</option>
+                                        })}
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <Label>Teacher</Label>
+                                    <Select
+                                        value={tempEntry.teacherId || ''}
+                                        onChange={e => setTempEntry(prev => ({ ...prev, teacherId: e.target.value }))}
+                                    >
+                                        <option value="">Select Teacher</option>
+                                        {teachers.map(t => <option key={t.uid} value={t.uid}>{t.name}</option>)}
+                                    </Select>
+                                </div>
+
+                                {saveError && (
+                                    <div className="p-2 bg-destructive/10 text-destructive text-sm rounded">
+                                        {saveError}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end space-x-2 pt-2">
+                                {tempEntry.id && (
+                                    <Button variant="destructive" onClick={handleDeleteEntry}>Clear</Button>
+                                )}
+                                <Button variant="ghost" onClick={() => setEditingCell(null)}>Cancel</Button>
+                                <Button onClick={handleSaveEntry}>Save</Button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Settings Modals */}
+            {isDivisionModalOpen && schoolId && <DivisionModal isOpen={isDivisionModalOpen} onClose={() => setIsDivisionModalOpen(false)} schoolId={schoolId} division={selectedDivision} majors={majors} groups={groups} />}
+            {isTimeSlotModalOpen && schoolId && selectedDivisionId && <TimeSlotModal isOpen={isTimeSlotModalOpen} onClose={() => setIsTimeSlotModalOpen(false)} schoolId={schoolId} divisionId={selectedDivisionId} timeSlot={selectedTimeSlot} />}
+            {itemToDelete && <ConfirmationModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={handleConfirmDelete} title={`Delete ${itemToDelete.type}?`} message={<p>Are you sure you want to delete <strong>{itemToDelete.data.name}</strong>? This cannot be undone.</p>} confirmText="Delete" />}
+
+            {/* Debug / Data Inspector */}
+            <div className="mt-8 pt-8 border-t print:hidden">
+                <Button variant="ghost" size="sm" onClick={() => setShowDebug(!showDebug)} className="text-muted-foreground">
+                    {showDebug ? 'Hide Data Inspector' : 'Show Data Inspector'}
+                </Button>
+
+                {showDebug && (
+                    <Card className="mt-4">
+                        <CardHeader>
+                            <CardTitle>Data Inspector</CardTitle>
+                            <CardDescription>
+                                Debugging why certain grades appear in the dropdown.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4 text-sm">
+                                <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded">
+                                    <div><strong>Hierarchy Loaded:</strong> {isHierarchyLoaded ? 'Yes' : 'No'}</div>
+                                    <div><strong>Cached Students:</strong> {cachedStudents.length}</div>
+                                    <div><strong>Selected Major:</strong> {majors.find(m => m.id === selectedMajorId)?.name || 'None'}</div>
+                                    <div><strong>Selected Groups:</strong> {groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name).join(', ') || 'None'}</div>
+                                    <div className="col-span-2 mt-2 border-t pt-2">
+                                        <strong>Entries per Day (Debug):</strong>
+                                        <div className="flex gap-4 mt-1">
+                                            {DAYS.map(d => {
+                                                const count = allEntries.filter(e => e.day === d).length;
+                                                return <div key={d} className={count === 0 ? "text-destructive" : ""}>{d}: {count}</div>
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {(() => {
+                                    const selectedMajorName = majors.find(m => m.id === selectedMajorId)?.name;
+                                    const selectedGroupNames = groups.filter(g => selectedGroupIds.includes(g.id)).map(g => g.name);
+
+                                    if (!isHierarchyLoaded) {
+                                        return <div className="text-destructive">Hierarchy not loaded. Check if Active Academic Year is set in School Settings.</div>;
+                                    }
+
+                                    // Filter students
+                                    const relevantStudents = cachedStudents.filter(s => {
+                                        if (selectedMajorName && s.major !== selectedMajorName) return false;
+                                        if (selectedGroupNames.length > 0 && (!s.group || !selectedGroupNames.includes(s.group))) return false;
+                                        return true;
+                                    });
+
+                                    // Group by Grade
+                                    const studentsByGrade: { [grade: string]: UserProfile[] } = {};
+                                    relevantStudents.forEach(s => {
+                                        const g = s.grade || 'Unassigned';
+                                        if (!studentsByGrade[g]) studentsByGrade[g] = [];
+                                        studentsByGrade[g].push(s);
+                                    });
+
+                                    const gradesList = Object.keys(studentsByGrade).sort();
+
+                                    if (gradesList.length === 0) return <p className="text-muted-foreground">No students found matching criteria.</p>;
+
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {gradesList.map(grade => (
+                                                <div key={grade} className="border rounded p-3">
+                                                    <h4 className="font-bold mb-2 flex justify-between">
+                                                        {grade}
+                                                        <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs">{studentsByGrade[grade].length} students</span>
+                                                    </h4>
+                                                    <ul className="text-xs space-y-1 max-h-40 overflow-y-auto">
+                                                        {studentsByGrade[grade].map(s => (
+                                                            <li key={s.uid} className="flex justify-between">
+                                                                <span>{s.name}</span>
+                                                                <span className="text-muted-foreground">{s.section}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            <div className="mt-4 border-t pt-4">
+                                <strong>Allocations vs. Scheduled (Debug):</strong>
+                                {(!selectedGradeId || !selectedSectionId) ? (
+                                    <p className="text-muted-foreground">Select a Grade and Section to view allocations.</p>
+                                ) : (
+                                    <table className="w-full text-sm border mt-2">
+                                        <thead className="bg-muted/50">
+                                            <tr>
+                                                <th className="border p-1">Subject</th>
+                                                <th className="border p-1">Teacher</th>
+                                                <th className="border p-1">Target</th>
+                                                <th className="border p-1">Scheduled</th>
+                                                <th className="border p-1">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                return <tr><td colSpan={5}>Debug: Allocations Placeholder</td></tr>;
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
+
+            {/* Validation Report Modal */}
+            <ValidationReportModal
+                isOpen={isValidationModalOpen}
+                onClose={() => setIsValidationModalOpen(false)}
+                {...validationReport}
+            />
+
+            {/* AI Review Modal */}
+            <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} title="Review Generated Timetable">
+                <div className="space-y-4">
+                    <div className="bg-muted/20 p-4 rounded-md text-sm">
+                        <p><strong>Generated Entries:</strong> {generatedSchedule.length}</p>
+                        <p className="text-muted-foreground mt-2">
+                            Please review the schedule below. If it looks correct, click "Accept & Save".
+                            If there are issues, you can close this and try again or manually edit later.
+                        </p>
+                    </div>
+
+                    <div className="max-h-[60vh] overflow-y-auto border rounded-md">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-muted sticky top-0">
+                                <tr>
+                                    <th className="p-2 border-b">Grade/Sec</th>
+                                    <th className="p-2 border-b">Day</th>
+                                    <th className="p-2 border-b">Time</th>
+                                    <th className="p-2 border-b">Subject</th>
+                                    <th className="p-2 border-b">Teacher</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {generatedSchedule.map((entry, idx) => {
+                                    const slot = timeSlots.find(ts => ts.id === entry.timeSlotId);
+                                    const subject = subjects.find(s => s.id === entry.subjectId);
+                                    const teacher = teachers.find(t => t.uid === entry.teacherId);
+
+                                    // Resolve Grade/Section Names (handle both ID and Name storage)
+                                    const gradeName = grades.find(g => g.id === entry.grade || g.name === entry.grade)?.name || entry.grade;
+                                    const sectionName = sections.find(s => s.id === entry.section || s.name === entry.section)?.name || entry.section;
+
+                                    return (
+                                        <tr key={idx} className="border-b last:border-0 hover:bg-muted/10">
+                                            <td className="p-2">{gradeName} - {sectionName}</td>
+                                            <td className="p-2">{entry.day}</td>
+                                            <td className="p-2">{slot ? `${slot.startTime} -${slot.endTime} ` : 'Unknown'}</td>
+                                            <td className="p-2 font-medium">{subject?.name || 'Unknown'}</td>
+                                            <td className="p-2 text-muted-foreground">{teacher?.name || 'Unassigned'}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-4">
+                        <Button variant="outline" onClick={() => setIsReviewModalOpen(false)}>Discard</Button>
+                        <Button onClick={handleAcceptSchedule}>Accept & Save</Button>
+                    </div>
+                </div>
+            </Modal>
+            <TeacherConstraintsModal
+                isOpen={isConstraintsModalOpen}
+                onClose={() => setIsConstraintsModalOpen(false)}
+                teacher={selectedTeacherForConstraints}
+                timeSlots={activeTimeSlots}
+                workingDays={workingDays}
+                onSave={handleSaveConstraints}
+            />
+        </div >
+    );
+};
+
+export default TimetableManagement;

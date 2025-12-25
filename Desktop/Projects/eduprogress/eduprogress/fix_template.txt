@@ -1,0 +1,4 @@
+﻿// ISSUE #1 FIX: generateSafeId function replacement
+const generateSafeId = (schoolId: string) => {
+  return `unsub_${schoolId}_${uuidv4()}`;
+};

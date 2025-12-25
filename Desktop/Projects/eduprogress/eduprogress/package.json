@@ -1,0 +1,45 @@
+{
+  "name": "eduprogress---super-admin-dashboard",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@google/genai": "^1.25.0",
+    "@radix-ui/react-label": "^2.1.7",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/qrcode.react": "^1.0.5",
+    "clsx": "^2.1.1",
+    "firebase": "^12.4.0",
+    "framer-motion": "^12.23.25",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^0.554.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.9.4",
+    "recharts": "^3.4.1",
+    "tailwind-merge": "^3.4.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "firebase-tools": "^14.26.0",
+    "jsdom": "^27.2.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^4.0.15"
+  }
+}

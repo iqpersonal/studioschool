@@ -1,0 +1,1 @@
+App.tsx(15,24): error TS2322: Type '"system"' is not assignable to type 'Theme'.

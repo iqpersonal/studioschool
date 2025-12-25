@@ -1,0 +1,5 @@
+{
+  "name": "EduProgress - Super Admin Dashboard",
+  "description": "A foundational Super Admin Dashboard for EduProgress, a multi-school SaaS system for student progress analysis and academic management. This application provides core features like authentication, school management, module control, and subscription tracking.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,73 @@
+App.tsx(15,24): error TS2322: Type '"system"' is not assignable to type 'Theme'.
+components/schools/CreateAdminModal.tsx(2,14): error TS2305: Module '"../../services/firebase"' has no exported member 'firebase'.
+components/schools/CreateAdminModal.tsx(46,18): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+components/ui/ImageUpload.tsx(2,10): error TS2305: Module '"../../services/firebase"' has no exported member 'firebase'.
+pages/Login.tsx(107,13): error TS2304: Cannot find name 'signInWithEmailAndPassword'.
+pages/school-admin/ManagementAssignments.tsx(42,37): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ManagementAssignments.tsx(54,34): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ManagementAssignments.tsx(86,18): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/MySchool.tsx(45,31): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/MySchool.tsx(92,38): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/MySchool.tsx(105,47): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/MySchool.tsx(120,46): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/NoticeBoard.tsx(35,32): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/NoticeBoard.tsx(69,26): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/NoticeBoard.tsx(73,41): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/NoticeBoard.tsx(88,22): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(5,14): error TS2305: Module '"../../services/firebase"' has no exported member 'firebase'.
+pages/school-admin/ProgressReports.tsx(78,28): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(102,28): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(120,28): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(171,29): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(586,34): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(594,14): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(638,14): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(669,44): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(690,91): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+pages/school-admin/ProgressReports.tsx(696,41): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(714,39): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/ProgressReports.tsx(798,43): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(30,30): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(39,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(89,22): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(207,35): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(213,35): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(217,31): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(232,18): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(250,18): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(301,52): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(360,38): error TS2739: Type '{ isOpen: true; onClose: () => void; schoolId: string; division: SchoolDivision; }' is missing the following properties from type 'DivisionModalProps': majors, groups
+pages/school-admin/SchoolSettings.tsx(373,22): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(452,32): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(456,32): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SchoolSettings.tsx(495,22): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentDetails.tsx(56,31): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(5,14): error TS2305: Module '"../../services/firebase"' has no exported member 'firebase'.
+pages/school-admin/StudentReportForm.tsx(77,35): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(78,34): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(87,37): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(98,52): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(130,45): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(140,38): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(191,37): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(192,25): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/StudentReportForm.tsx(238,43): error TS2339: Property 'httpsCallable' does not exist on type 'Functions'.
+pages/school-admin/SubjectAllocation.tsx(43,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(44,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(45,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(46,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(47,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(48,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(110,30): error TS2339: Property 'batch' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(115,39): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(119,36): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/SubjectAllocation.tsx(127,35): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherAssignmentsReport.tsx(31,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherAssignmentsReport.tsx(32,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherAssignmentsReport.tsx(33,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherAssignmentsReport.tsx(34,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherAssignmentsReport.tsx(35,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherWorkloadReport.tsx(44,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherWorkloadReport.tsx(45,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherWorkloadReport.tsx(49,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
+pages/school-admin/TeacherWorkloadReport.tsx(50,24): error TS2339: Property 'collection' does not exist on type 'Firestore'.
