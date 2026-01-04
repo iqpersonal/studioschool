@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "EduProgress Mobile",
+    "slug": "eduprogress-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eduprogress.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.eduprogress.mobile"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useAndroidX": true,
+            "enableProguardInReleaseBuilds": true
+          }
+        }
+      ]
+    ]
+  }
+}
