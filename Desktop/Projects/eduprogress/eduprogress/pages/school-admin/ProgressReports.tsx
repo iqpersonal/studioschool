@@ -198,46 +198,21 @@ const ProgressReports: React.FC = () => {
   // Effect to calculate which students have reports entered based on user role
   useEffect(() => {
     const statusMap = new Map<string, boolean>();
-    if (classRoster.length === 0 || !selectedGrade || !selectedSection) {
+    if (classRoster.length === 0) {
       setReportStatus(statusMap);
       return;
     }
 
-    let coordinatorSubjectIds: Set<string> | null = null;
-    if (isSubjectCoordinator) {
-      const firstStudent = classRoster.length > 0 ? classRoster[0] : null;
-      coordinatorSubjectIds = new Set<string>();
-      managementAssignments
-        .filter(a => a.role === 'subject-coordinator' && a.grade === selectedGrade)
-        .forEach(a => {
-          const majorMatch = !a.major || !firstStudent || a.major === firstStudent.major;
-          const groupMatch = !a.group || !firstStudent || a.group === firstStudent.group;
-          if (a.subjectId && majorMatch && groupMatch) {
-            coordinatorSubjectIds!.add(a.subjectId);
-          }
-        });
-    }
-
-    const teacherSubjectIdsForClass = isTeacher
-      ? new Set(teacherAssignments.filter(a => a.grade === selectedGrade && a.section === selectedSection).map(a => a.subjectId))
-      : null;
-
+    // Simple check: does student have ANY report for current month
     classRoster.forEach(student => {
-      const report = classReports.find(r => r.studentId === student.uid && r.month === selectedMonth);
-      let isComplete = false;
-      if (report?.entries) {
-        if (isSubjectCoordinator && coordinatorSubjectIds) {
-          isComplete = Object.keys(report.entries).some(subjectId => coordinatorSubjectIds!.has(subjectId));
-        } else if (isTeacher && teacherSubjectIdsForClass) {
-          isComplete = Object.keys(report.entries).some(subjectId => teacherSubjectIdsForClass.has(subjectId));
-        } else if (isManager) {
-          isComplete = Object.keys(report.entries).length > 0;
-        }
-      }
-      statusMap.set(student.uid, isComplete);
+      const hasReport = classReports.some(r => 
+        r.studentId === student.uid && 
+        r.month === selectedMonth
+      );
+      statusMap.set(student.uid, hasReport);
     });
     setReportStatus(statusMap);
-  }, [classRoster, classReports, teacherAssignments, managementAssignments, isTeacher, isSubjectCoordinator, isManager, selectedGrade, selectedSection, selectedMonth]);
+  }, [classRoster.length, classReports.length, selectedMonth]);
 
   const scopedStudents = useMemo(() => {
     let studentsInScope = allStudentsInSchool;

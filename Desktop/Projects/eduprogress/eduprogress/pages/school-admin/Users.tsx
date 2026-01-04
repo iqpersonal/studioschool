@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { db, functions } from '../../services/firebase';
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs } from 'firebase/firestore';
-import { useUsers } from '../../hooks/queries/useUsers';
+import { useUsersPaginated } from '../../hooks/queries/useUsersPaginated';
 import { useQueryClient } from '@tanstack/react-query';
 import { httpsCallable } from 'firebase/functions';
 import { UserProfile } from '../../types';
@@ -40,13 +40,12 @@ const Users: React.FC = () => {
     const { currentUserData } = useAuth();
     const { selectedAcademicYear } = useAcademicYear();
     const navigate = useNavigate();
-
-    const { data: allUsers = [], isLoading: usersLoading, isError: usersError } = useUsers({ schoolId: currentUserData?.schoolId });
     const queryClient = useQueryClient();
 
     // === STAFF STATE ===
     const [staffFilterRole, setStaffFilterRole] = useState('');
     const [staffSearchTerm, setStaffSearchTerm] = useState('');
+    const [staffCurrentPage, setStaffCurrentPage] = useState(1);
     const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
     const [selectedStaffUser, setSelectedStaffUser] = useState<UserProfile | null>(null);
     const [staffUserToDelete, setStaffUserToDelete] = useState<UserProfile | null>(null);
@@ -64,47 +63,87 @@ const Users: React.FC = () => {
     const [studentToDelete, setStudentToDelete] = useState<UserProfile | 'all' | null>(null);
     const [isDeletingStudent, setIsDeletingStudent] = useState(false);
 
+    // === PAGINATED STAFF HOOK ===
+    const { 
+        data: staffUsers = [], 
+        totalRecords: staffTotalRecords, 
+        currentPage: staffPageNum, 
+        pageSize: staffPageSize, 
+        totalPages: staffTotalPages, 
+        hasNextPage: staffHasNext, 
+        hasPrevPage: staffHasPrev,
+        isLoading: staffLoading, 
+        isError: staffError 
+    } = useUsersPaginated(
+        currentUserData?.schoolId || '',
+        staffCurrentPage,
+        staffSearchTerm,
+        staffFilterRole
+    );
+
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setStaffCurrentPage(1);
+    }, [staffSearchTerm, staffFilterRole]);
+
+    // === FETCH NON-PAGINATED STUDENTS (for filtering) ===
+    const [allStudents, setAllStudents] = useState<UserProfile[]>([]);
+    const [studentsFetching, setStudentsFetching] = useState(false);
+    const [studentsError, setStudentsError] = useState(false);
+
+    useEffect(() => {
+        if (!currentUserData?.schoolId) return;
+
+        const fetchStudents = async () => {
+            setStudentsFetching(true);
+            try {
+                const snapshot = await getDocs(
+                    query(
+                        collection(db, 'users'),
+                        where('schoolId', '==', currentUserData.schoolId),
+                        where('status', '!=', 'archived')
+                    )
+                );
+                const students = snapshot.docs
+                    .map(doc => ({ id: doc.id, ...doc.data() } as any))
+                    .filter(user => {
+                        const roles = getRoles(user);
+                        const isStudent = roles.includes('student');
+                        const matchesYear = !selectedAcademicYear || user.academicYear === selectedAcademicYear;
+                        return isStudent && matchesYear;
+                    })
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                setAllStudents(students);
+            } catch (err) {
+                setStudentsError(true);
+            } finally {
+                setStudentsFetching(false);
+            }
+        };
+
+        fetchStudents();
+    }, [currentUserData?.schoolId, selectedAcademicYear]);
+
     // === FILTERING ===
-    const activeUsers = useMemo(() => allUsers.filter(user => user.status !== 'archived'), [allUsers]);
+    const majorOptions = useMemo(() => Array.from(new Set(allStudents.map(s => s.major).filter(Boolean as any))).sort(), [allStudents]);
+    const groupOptions = useMemo(() => Array.from(new Set(allStudents.filter(s => !selectedMajor || s.major === selectedMajor).map(s => s.group).filter(Boolean as any))).sort(), [allStudents, selectedMajor]);
+    const gradeOptions = useMemo(() => Array.from(new Set(allStudents.filter(s => (!selectedMajor || s.major === selectedMajor) && (!selectedGroup || s.group === selectedGroup)).map(s => s.grade).filter(Boolean as any))).sort(), [allStudents, selectedMajor, selectedGroup]);
+    const sectionOptions = useMemo(() => Array.from(new Set(allStudents.filter(s => (!selectedMajor || s.major === selectedMajor) && (!selectedGroup || s.group === selectedGroup) && (!selectedGrade || s.grade === selectedGrade)).map(s => s.section).filter(Boolean as any))).sort(), [allStudents, selectedMajor, selectedGroup, selectedGrade]);
 
-    const staffUsers = useMemo(() => {
-        const staff = activeUsers.filter(user => {
-            const roles = getRoles(user);
-            return roles.some(r => STAFF_ROLES.includes(r as any));
-        });
-        return staff.sort((a, b) => a.name.localeCompare(b.name));
-    }, [activeUsers]);
+    useEffect(() => { setSelectedGroup(''); }, [selectedMajor]);
+    useEffect(() => { setSelectedGrade(''); }, [selectedGroup]);
+    useEffect(() => { setSelectedSection(''); }, [selectedGrade]);
 
-    const studentUsers = useMemo(() => {
-        const students = activeUsers.filter(user => {
-            const roles = getRoles(user);
-            const isStudent = roles.includes('student');
-            const matchesYear = !selectedAcademicYear || user.academicYear === selectedAcademicYear;
-            return isStudent && matchesYear;
-        });
-        return students.sort((a, b) => a.name.localeCompare(b.name));
-    }, [activeUsers, selectedAcademicYear]);
+    const filteredStudents = useMemo(() => {
+        return allStudents.filter(student =>
+            (!selectedMajor || student.major === selectedMajor) &&
+            (!selectedGroup || student.group === selectedGroup) &&
+            (!selectedGrade || student.grade === selectedGrade) &&
+            (!selectedSection || student.section === selectedSection)
+        );
+    }, [allStudents, selectedMajor, selectedGroup, selectedGrade, selectedSection]);
 
-    const staffLoading = usersLoading;
-    const studentLoading = usersLoading;
-    const staffError = usersError ? "Failed to fetch users." : null;
-    const studentError = usersError ? "Failed to fetch users." : null;
-
-
-    // === STAFF LOGIC ===
-    const filteredStaffUsers = useMemo(() => {
-        return staffUsers
-            .filter(user => {
-                const userRoles = getRoles(user);
-                const roleMatch = !staffFilterRole || userRoles.includes(staffFilterRole as any);
-                const searchMatch = !staffSearchTerm ||
-                    user.name.toLowerCase().includes(staffSearchTerm.toLowerCase()) ||
-                    (user.email && user.email.toLowerCase().includes(staffSearchTerm.toLowerCase()));
-                return roleMatch && searchMatch;
-            })
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [staffUsers, staffFilterRole, staffSearchTerm]);
-
+    // === STAFF HANDLERS ===
     const handleCreateStaff = () => {
         setSelectedStaffUser(null);
         setIsStaffModalOpen(true);
@@ -124,7 +163,7 @@ const Users: React.FC = () => {
         setIsDeletingStaff(true);
         try {
             await updateDoc(doc(db, 'users', staffUserToDelete.uid), { status: 'archived' });
-            queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['usersPaginated'] });
         } catch (err: any) {
             alert('Failed to archive user.');
         } finally {
@@ -166,7 +205,7 @@ const Users: React.FC = () => {
                     batch.update(docRef, { status: 'archived' });
                 });
                 await batch.commit();
-                queryClient.invalidateQueries({ queryKey: ['users'] });
+                queryClient.invalidateQueries({ queryKey: ['usersPaginated'] });
             } catch (err: any) {
                 alert('Failed to archive all filtered students. You may need permissions to perform batch writes.');
                 console.error("Error archiving filtered students: ", err);
@@ -174,7 +213,7 @@ const Users: React.FC = () => {
         } else if (studentToDelete) {
             try {
                 await updateDoc(doc(db, 'users', studentToDelete.uid), { status: 'archived' });
-                queryClient.invalidateQueries({ queryKey: ['users'] });
+                queryClient.invalidateQueries({ queryKey: ['usersPaginated'] });
             } catch (err: any) {
                 alert('Failed to archive student.');
             }
@@ -182,24 +221,6 @@ const Users: React.FC = () => {
         setIsDeletingStudent(false);
         setStudentToDelete(null);
     };
-
-    const majorOptions = useMemo(() => Array.from(new Set(studentUsers.map(s => s.major).filter(Boolean as any))).sort(), [studentUsers]);
-    const groupOptions = useMemo(() => Array.from(new Set(studentUsers.filter(s => !selectedMajor || s.major === selectedMajor).map(s => s.group).filter(Boolean as any))).sort(), [studentUsers, selectedMajor]);
-    const gradeOptions = useMemo(() => Array.from(new Set(studentUsers.filter(s => (!selectedMajor || s.major === selectedMajor) && (!selectedGroup || s.group === selectedGroup)).map(s => s.grade).filter(Boolean as any))).sort(), [studentUsers, selectedMajor, selectedGroup]);
-    const sectionOptions = useMemo(() => Array.from(new Set(studentUsers.filter(s => (!selectedMajor || s.major === selectedMajor) && (!selectedGroup || s.group === selectedGroup) && (!selectedGrade || s.grade === selectedGrade)).map(s => s.section).filter(Boolean as any))).sort(), [studentUsers, selectedMajor, selectedGroup, selectedGrade]);
-
-    useEffect(() => { setSelectedGroup(''); }, [selectedMajor]);
-    useEffect(() => { setSelectedGrade(''); }, [selectedGroup]);
-    useEffect(() => { setSelectedSection(''); }, [selectedGrade]);
-
-    const filteredStudents = useMemo(() => {
-        return studentUsers.filter(student =>
-            (!selectedMajor || student.major === selectedMajor) &&
-            (!selectedGroup || student.group === selectedGroup) &&
-            (!selectedGrade || student.grade === selectedGrade) &&
-            (!selectedSection || student.section === selectedSection)
-        );
-    }, [studentUsers, selectedMajor, selectedGroup, selectedGrade, selectedSection]);
 
     const getStudentConfirmationContent = () => {
         if (!studentToDelete) return { title: '', message: '' };
@@ -224,27 +245,22 @@ const Users: React.FC = () => {
 
         setIsGeneratingAccounts(true);
         try {
-            // Fetch all users for the school to handle inconsistent role formats
             const snapshot = await getDocs(query(collection(db, 'users'), where('schoolId', '==', currentUserData.schoolId)));
-
             const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-
-            // Filter for students using the robust helper
             const students = allUsers.filter(user => {
                 const roles = getRoles(user);
                 return roles.includes('student');
             });
             const families = new Map();
 
-            // Group by familyUsername
             students.forEach(student => {
                 if (student.familyUsername && student.familyPassword) {
                     if (!families.has(student.familyUsername)) {
                         families.set(student.familyUsername, {
                             username: student.familyUsername,
                             password: student.familyPassword,
-                            name: student.familyName || `Family of ${student.name}`,
-                            email: `${student.familyUsername}@parent.eduprogress.com`, // Virtual email for auth
+                            name: student.familyName || "Family of " + student.familyUsername,
+                            email: student.familyUsername + "@parent.eduprogress.com",
                             schoolId: currentUserData.schoolId
                         });
                     }
@@ -252,31 +268,26 @@ const Users: React.FC = () => {
             });
 
             const familiesArray = Array.from(families.values());
-            console.log(`Sending ${familiesArray.length} families to Cloud Function...`);
+            console.log("Sending families to Cloud Function...");
 
             const generateParentAccounts = httpsCallable(functions, 'generateParentAccounts');
             const result = await generateParentAccounts({ families: familiesArray });
-
             const data = result.data as any;
 
             if (data.success === false) {
-                alert(`Server Error: ${data.fatalError}\n\nStack: ${data.stack}`);
+                alert("Server Error: " + (data.error || "Unknown error"));
                 return;
             }
 
             const { created, skipped, errors, debugLogs } = data;
-
-            let message = `Process Complete:\n- Students Scanned: ${students.length}\n- Families Found: ${families.size}\n- Accounts Created: ${created}\n- Skipped (Existing): ${skipped}\n- Errors: ${errors}`;
-
+            let message = "Process Complete:\n" + "- Students Scanned: " + allUsers.length + "\n" + "- Families Found: " + families.size + "\n" + "- Accounts Created: " + (created || 0) + "\n" + "- Skipped (Existing): " + (skipped || 0) + "\n" + "- Errors: " + ((errors && errors.length) || 0);
             if (debugLogs && debugLogs.length > 0) {
-                message += `\n\nSample Errors:\n${debugLogs.join('\n')}`;
+                message += "\n\nSample Errors:\n" + debugLogs.slice(0, 3).join("\n");
             }
-
             alert(message);
-
         } catch (error) {
             console.error("Error generating parent accounts:", error);
-            alert(`An error occurred: ${error}`);
+            alert("An error occurred while generating parent accounts: " + (error instanceof Error ? error.message : String(error)));
         } finally {
             setIsGeneratingAccounts(false);
         }
@@ -300,7 +311,7 @@ const Users: React.FC = () => {
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <CardTitle>School Staff Directory</CardTitle>
-                                        <CardDescription>A list of all teachers and administrative staff.</CardDescription>
+                                        <CardDescription>A list of all teachers and administrative staff. (Showing {staffUsers.length} of {staffTotalRecords})</CardDescription>
                                     </div>
                                     <Button onClick={handleCreateStaff}>Create Staff User</Button>
                                 </div>
@@ -318,9 +329,9 @@ const Users: React.FC = () => {
                                         <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role(s)</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                         <TableBody>
                                             {staffLoading ? (<TableRow><TableCell colSpan={4} className="text-center">Loading users...</TableCell></TableRow>) :
-                                                staffError ? (<TableRow><TableCell colSpan={4} className="text-center text-destructive">{staffError}</TableCell></TableRow>) :
-                                                    filteredStaffUsers.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">No users found.</TableCell></TableRow>) : (
-                                                        filteredStaffUsers.map(user => {
+                                                staffError ? (<TableRow><TableCell colSpan={4} className="text-center text-destructive">Failed to fetch users.</TableCell></TableRow>) :
+                                                    staffUsers.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">No users found.</TableCell></TableRow>) : (
+                                                        staffUsers.map(user => {
                                                             const userRoles = getRoles(user);
                                                             const isManager = userRoles.some(r => MANAGEMENT_ROLES.includes(r));
                                                             return (
@@ -341,6 +352,20 @@ const Users: React.FC = () => {
                                         </TableBody>
                                     </Table>
                                 </div>
+                                {/* PAGINATION CONTROLS */}
+                                <div className="flex items-center justify-between mt-4">
+                                    <div className="text-sm text-muted-foreground">
+                                        Page {staffPageNum} of {staffTotalPages} ({staffTotalRecords} total)
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => setStaffCurrentPage(p => Math.max(1, p - 1))} disabled={!staffHasPrev || staffLoading}>
+                                            Previous
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => setStaffCurrentPage(p => p + 1)} disabled={!staffHasNext || staffLoading}>
+                                            Next
+                                        </Button>
+                                    </div>
+                                </div>
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -358,7 +383,7 @@ const Users: React.FC = () => {
                                         <Button variant="outline" onClick={handleGenerateParentAccounts}>Generate Parent Accounts</Button>
                                         <Button variant="outline" onClick={() => navigate('/import')}>Import Students</Button>
                                         <Button onClick={handleCreateStudent}>Create Student</Button>
-                                        <Button variant="destructive" onClick={handleDeleteAllStudents} disabled={studentLoading || filteredStudents.length === 0}>Delete Filtered Students</Button>
+                                        <Button variant="destructive" onClick={handleDeleteAllStudents} disabled={studentsFetching || filteredStudents.length === 0}>Delete Filtered Students</Button>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -373,8 +398,8 @@ const Users: React.FC = () => {
                                     <Table>
                                         <TableHeader><TableRow><TableHead>Student ID</TableHead><TableHead>Name</TableHead><TableHead>Grade</TableHead><TableHead>Section</TableHead><TableHead>Email</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
                                         <TableBody>
-                                            {studentLoading ? (<TableRow><TableCell colSpan={6} className="text-center">Loading students...</TableCell></TableRow>) :
-                                                studentError ? (<TableRow><TableCell colSpan={6} className="text-center text-destructive">{studentError}</TableCell></TableRow>) :
+                                            {studentsFetching ? (<TableRow><TableCell colSpan={6} className="text-center">Loading students...</TableCell></TableRow>) :
+                                                studentsError ? (<TableRow><TableCell colSpan={6} className="text-center text-destructive">Failed to fetch students.</TableCell></TableRow>) :
                                                     filteredStudents.length === 0 ? (<TableRow><TableCell colSpan={6} className="text-center">No students found for the selected academic year and filters.</TableCell></TableRow>) : (
                                                         filteredStudents.map(student => (
                                                             <TableRow key={student.uid}>
@@ -406,7 +431,7 @@ const Users: React.FC = () => {
                 <CreateEditUserModal isOpen={isStaffModalOpen} onClose={() => setIsStaffModalOpen(false)} schoolId={currentUserData?.schoolId!} user={selectedStaffUser} />
             )}
             {staffUserToDelete && (
-                <ConfirmationModal isOpen={!!staffUserToDelete} onClose={() => setStaffUserToDelete(null)} onConfirm={handleConfirmDeleteStaff} title={`Archive User?`} message={<p>Are you sure you want to archive <strong>{staffUserToDelete.name}</strong>? They will be hidden from view but not permanently deleted.</p>} confirmText="Archive User" loading={isDeletingStaff} />
+                <ConfirmationModal isOpen={!!staffUserToDelete} onClose={() => setStaffUserToDelete(null)} onConfirm={handleConfirmDeleteStaff} title="Archive User?" message={<p>Are you sure you want to archive <strong>{staffUserToDelete.name}</strong>? They will be hidden from view but not permanently deleted.</p>} confirmText="Archive User" loading={isDeletingStaff} />
             )}
 
             <ResetPasswordModal
@@ -424,3 +449,5 @@ const Users: React.FC = () => {
 };
 
 export default Users;
+
+

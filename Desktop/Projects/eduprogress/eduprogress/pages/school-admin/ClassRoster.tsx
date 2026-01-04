@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { db } from '../../services/firebase';
-import { collection, query, where, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { useAuth } from '../../hooks/useAuth';
-import { UserProfile, TeacherAssignment, ProgressReport } from '../../types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/Card';
-import Button from '../../components/ui/Button';
-import Loader from '../../components/ui/Loader';
-import AssignTeacherModal from '../../components/assignments/AssignTeacherModal';
-import ConfirmationModal from '../../components/ui/ConfirmationModal';
+﻿import React, { useState, useMemo } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import { db } from "../../services/firebase";
+import { doc, deleteDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { useAuth } from "../../hooks/useAuth";
+import { UserProfile, TeacherAssignment, ProgressReport } from "../../types";
+import { useTeacherAssignments } from "../../hooks/queries/useTeacherAssignments";
+import { useClassRosterStudents } from "../../hooks/queries/useClassRosterStudents";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/Card";
+import Button from "../../components/ui/Button";
+import Loader from "../../components/ui/Loader";
+import AssignTeacherModal from "../../components/assignments/AssignTeacherModal";
+import ConfirmationModal from "../../components/ui/ConfirmationModal";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const CheckCircleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -20,116 +23,86 @@ const ClassRoster: React.FC = () => {
   const { grade, section } = useParams<{ grade: string; section: string }>();
   const navigate = useNavigate();
   const { currentUserData } = useAuth();
-  const [students, setStudents] = useState<UserProfile[]>([]);
-  const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
-  const [classReports, setClassReports] = useState<ProgressReport[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
+  const decodedGrade = grade ? decodeURIComponent(grade) : "";
+  const decodedSection = section ? decodeURIComponent(section) : "";
+  const currentMonth = new Date().toLocaleString("default", { month: "long" });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [assignmentToEdit, setAssignmentToEdit] = useState<TeacherAssignment | null>(null);
   const [assignmentToDelete, setAssignmentToDelete] = useState<TeacherAssignment | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [classReports, setClassReports] = useState<ProgressReport[]>([]);
+  const [reportError, setReportError] = useState<string | null>(null);
 
-  const decodedGrade = grade ? decodeURIComponent(grade) : '';
-  const decodedSection = section ? decodeURIComponent(section) : '';
-  const currentMonth = new Date().toLocaleString('default', { month: 'long' });
+  // Phase 3D Step 3: Use React Query hooks (replaced dynamic import)
+  const assignmentsQuery = useTeacherAssignments({
+    schoolId: currentUserData?.schoolId,
+  });
 
-  const fetchClassData = () => {
-    if (!currentUserData?.schoolId || !decodedGrade || !decodedSection) {
-      setError("Missing required information to fetch class data.");
-      setLoading(false);
-      return;
-    }
+  const studentsQuery = useClassRosterStudents({
+    schoolId: currentUserData?.schoolId,
+    grade: decodedGrade,
+    section: decodedSection,
+  });
 
-    setLoading(true);
-    let queriesCompleted = 0;
-    const totalQueries = 3;
-    const errors: string[] = [];
+  // Filter assignments for this specific grade/section
+  const classAssignments = (assignmentsQuery.data || []).filter(
+    a => a.grade === decodedGrade && a.section === decodedSection
+  );
 
-    const onQueryDone = () => {
-      queriesCompleted++;
-      if (queriesCompleted === totalQueries) {
-        setLoading(false);
-        if (errors.length > 0) {
-          setError(errors.join(' '));
-        }
+  // Fetch progress reports (kept as side effect since it's status-only data)
+  React.useEffect(() => {
+    const fetchReports = async () => {
+      if (!currentUserData?.schoolId || !decodedGrade || !decodedSection) return;
+
+      try {
+        const reportsQuery = query(
+          collection(db, "progressReports"),
+          where("schoolId", "==", currentUserData.schoolId),
+          where("grade", "==", decodedGrade),
+          where("section", "==", decodedSection)
+        );
+        const reportsSnap = await getDocs(reportsQuery);
+        setClassReports(
+          reportsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as ProgressReport)
+        );
+      } catch (err) {
+        console.error("Error fetching reports:", err);
+        setReportError("Failed to fetch progress reports.");
       }
     };
 
-    const studentRosterQuery = query(collection(db, 'users'),
-      where('schoolId', '==', currentUserData.schoolId),
-      where('grade', '==', decodedGrade),
-      where('section', '==', decodedSection)
-    );
+    fetchReports();
+  }, [currentUserData?.schoolId, decodedGrade, decodedSection]);
 
-    const usersUnsubscribe = onSnapshot(studentRosterQuery,
-      (snapshot) => {
-        const allUsersInClass = snapshot.docs.map(doc => doc.data() as UserProfile);
+  // Combined loading/error state
+  const isLoading = studentsQuery.isLoading || assignmentsQuery.isLoading;
+  const hasError = studentsQuery.isError || assignmentsQuery.isError;
+  const errorMessage = studentsQuery.error?.message || assignmentsQuery.error?.message;
 
-        const studentsData = allUsersInClass.filter(u => {
-          const roles = Array.isArray(u.role) ? u.role : (u.role ? [u.role] : []);
-          return roles.includes('student') && u.status !== 'archived';
-        });
+  // Filter students based on search
+  const allStudents = studentsQuery.data || [];
+  const filteredStudents = useMemo(() => {
+    return allStudents.filter(student => {
+      const fullName = `${student.name || ""} ${student.fatherName || ""} ${student.familyName || ""}`.toLowerCase();
+      const email = (student.email || "").toLowerCase();
+      const studentId = (student.studentIdNumber || "").toLowerCase();
+      const search = searchTerm.toLowerCase();
+      return fullName.includes(search) || email.includes(search) || studentId.includes(search);
+    });
+  }, [allStudents, searchTerm]);
 
-        studentsData.sort((a, b) => {
-          const nameA = `${a.name || ''} ${a.fatherName || ''} ${a.familyName || ''}`.trim().toLowerCase();
-          const nameB = `${b.name || ''} ${b.fatherName || ''} ${b.familyName || ''}`.trim().toLowerCase();
-          return nameA.localeCompare(nameB);
-        });
-        setStudents(studentsData);
-        onQueryDone();
-      },
-      (err) => {
-        console.error("Error fetching class roster:", err);
-        errors.push("Failed to fetch class roster. Check permissions and database indexes.");
-        onQueryDone();
-      }
-    );
+  // Pagination logic
+  const ITEMS_PER_PAGE = 25;
+  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedStudents = filteredStudents.slice(startIndex, endIndex);
 
-    const assignmentsUnsubscribe = onSnapshot(query(collection(db, 'teacherAssignments'),
-      where('schoolId', '==', currentUserData.schoolId),
-      where('grade', '==', decodedGrade),
-      where('section', '==', decodedSection)
-    ),
-      (snapshot) => {
-        const assignmentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as TeacherAssignment);
-        setAssignments(assignmentsData);
-        onQueryDone();
-      },
-      (err) => {
-        console.error("Error fetching teacher assignments:", err);
-        errors.push("Failed to fetch teacher assignments.");
-        onQueryDone();
-      }
-    );
-
-    const reportsUnsubscribe = onSnapshot(query(collection(db, 'progressReports'),
-      where('schoolId', '==', currentUserData.schoolId),
-      where('grade', '==', decodedGrade),
-      where('section', '==', decodedSection)
-    ),
-      (snapshot) => {
-        const reportsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as ProgressReport);
-        setClassReports(reportsData);
-        onQueryDone();
-      },
-      (err) => {
-        console.error("Error fetching progress reports:", err);
-        errors.push("Failed to fetch progress reports.");
-        onQueryDone();
-      }
-    );
-
-    return () => {
-      usersUnsubscribe();
-      assignmentsUnsubscribe();
-      reportsUnsubscribe();
-    };
-  }
-
-  useEffect(fetchClassData, [currentUserData?.schoolId, decodedGrade, decodedSection]);
-
+  // Report status map
   const studentReportStatus = useMemo(() => {
     const statusMap = new Map<string, boolean>();
     classReports.forEach(report => {
@@ -150,12 +123,11 @@ const ClassRoster: React.FC = () => {
     setIsAssignmentModalOpen(true);
   };
 
-
   const handleConfirmDelete = async () => {
     if (!assignmentToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, 'teacherAssignments', assignmentToDelete.id));
+      await deleteDoc(doc(db, "teacherAssignments", assignmentToDelete.id));
     } catch (err) {
       console.error("Error deleting assignment", err);
       alert("Failed to remove assignment.");
@@ -164,6 +136,9 @@ const ClassRoster: React.FC = () => {
       setAssignmentToDelete(null);
     }
   };
+
+  const handlePrevPage = () => setCurrentPage(p => Math.max(1, p - 1));
+  const handleNextPage = () => setCurrentPage(p => (p < totalPages ? p + 1 : p));
 
   return (
     <>
@@ -179,8 +154,10 @@ const ClassRoster: React.FC = () => {
             <h1 className="text-3xl font-bold tracking-tight">{decodedGrade} - {decodedSection}</h1>
             <p className="text-muted-foreground">Manage students and assigned teachers.</p>
           </div>
-          <Button onClick={() => navigate('/grades-sections')}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+          <Button onClick={() => navigate("/grades-sections")}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 mr-2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
             Back to Grades & Sections
           </Button>
         </header>
@@ -190,34 +167,75 @@ const ClassRoster: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Class Roster</CardTitle>
-                <CardDescription>
-                  {students.length} student(s) in this class.
-                </CardDescription>
+                <CardDescription>{allStudents.length} student(s) in this class.</CardDescription>
               </CardHeader>
               <CardContent>
-                {loading ? <Loader /> : error ? <p className="text-destructive text-center">{error}</p> : students.length === 0 ? (
-                  <p className="text-muted-foreground text-center">No students found in this class.</p>
-                ) : (
-                  <ul className="divide-y divide-border">
-                    {students.map((student, index) => {
-                      const hasReport = studentReportStatus.get(student.uid);
-                      const studentName = `${student.name || ''} ${student.fatherName || ''} ${student.familyName || ''}`.trim();
-                      return (
-                        <li key={student.uid || index} className="py-3 px-1 flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Link
-                              to={`/progress-reports/${encodeURIComponent(decodedGrade)}/${encodeURIComponent(decodedSection)}/${student.uid}/${encodeURIComponent(currentMonth)}`}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              {studentName}
-                            </Link>
-                            {hasReport && <CheckCircleIcon />}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Search by name, email, or ID..."
+                    value={searchTerm}
+                    onChange={e => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+                  />
+                  {isLoading ? (
+                    <Loader />
+                  ) : hasError ? (
+                    <p className="text-destructive text-center">{errorMessage || "Failed to load students"}</p>
+                  ) : filteredStudents.length === 0 ? (
+                    <p className="text-muted-foreground text-center">No students found.</p>
+                  ) : (
+                    <>
+                      <ul className="divide-y divide-border">
+                        {paginatedStudents.map((student, index) => {
+                          const hasReport = studentReportStatus.get(student.uid);
+                          const studentName = `${student.name || ""} ${student.fatherName || ""} ${student.familyName || ""}`.trim();
+                          return (
+                            <li key={student.uid || index} className="py-3 px-1 flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <Link
+                                  to={`/progress-reports/${encodeURIComponent(decodedGrade)}/${encodeURIComponent(decodedSection)}/${student.uid}/${encodeURIComponent(currentMonth)}`}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  {studentName}
+                                </Link>
+                                {hasReport && <CheckCircleIcon />}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      <div className="flex items-center justify-between pt-4 border-t">
+                        <span className="text-sm text-muted-foreground">
+                          Page {currentPage} of {totalPages} ({filteredStudents.length} total)
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePrevPage}
+                            disabled={currentPage === 1}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Previous
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleNextPage}
+                            disabled={currentPage === totalPages}
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -227,26 +245,26 @@ const ClassRoster: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle>Assigned Teachers</CardTitle>
-                    <CardDescription>
-                      Teachers for this class.
-                    </CardDescription>
+                    <CardDescription>Teachers for this class.</CardDescription>
                   </div>
                   <Button size="sm" onClick={handleOpenCreateModal}>Assign Staff</Button>
                 </div>
               </CardHeader>
               <CardContent>
-                {loading ? <Loader size="sm" /> : (
+                {assignmentsQuery.isLoading ? (
+                  <Loader size="sm" />
+                ) : (
                   <div className="space-y-2">
-                    {assignments.length === 0 ? (
+                    {classAssignments.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No teachers assigned yet.</p>
                     ) : (
-                      assignments.map(assignment => (
+                      classAssignments.map(assignment => (
                         <div key={assignment.id} className="flex items-center justify-between p-2 rounded-md bg-secondary/50">
                           <div>
                             <p className="text-sm font-medium">{assignment.teacherName}</p>
                             <p className="text-xs text-muted-foreground">
                               {assignment.subjectName}
-                              {assignment.periodsPerWeek ? ` (${assignment.periodsPerWeek} period(s)/week)` : ''}
+                              {assignment.periodsPerWeek ? ` (${assignment.periodsPerWeek} period(s)/week)` : ""}
                             </p>
                           </div>
                           <div className="flex items-center space-x-1">
@@ -267,9 +285,7 @@ const ClassRoster: React.FC = () => {
         <AssignTeacherModal
           isOpen={isAssignmentModalOpen}
           onClose={() => setIsAssignmentModalOpen(false)}
-          onSuccess={() => {
-            setIsAssignmentModalOpen(false);
-          }}
+          onSuccess={() => setIsAssignmentModalOpen(false)}
           schoolId={currentUserData.schoolId}
           grade={decodedGrade}
           section={decodedSection}
@@ -282,7 +298,12 @@ const ClassRoster: React.FC = () => {
           onClose={() => setAssignmentToDelete(null)}
           onConfirm={handleConfirmDelete}
           title="Remove Assignment?"
-          message={<p>Are you sure you want to remove <strong>{assignmentToDelete.teacherName}</strong> from this class for the subject of <strong>{assignmentToDelete.subjectName}</strong>?</p>}
+          message={
+            <p>
+              Are you sure you want to remove <strong>{assignmentToDelete.teacherName}</strong> from this class for
+              the subject of <strong>{assignmentToDelete.subjectName}</strong>?
+            </p>
+          }
           confirmText="Yes, Remove"
           loading={isDeleting}
         />

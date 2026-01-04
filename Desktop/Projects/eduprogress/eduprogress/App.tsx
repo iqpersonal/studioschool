@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { Toaster } from './components/ui/Toast';
 import ErrorBoundary from './components/ErrorBoundary';
+import LandingPage from './pages/LandingPage';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -22,6 +23,7 @@ const App: React.FC = () => {
             <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
               <Router>
                 <Routes>
+                  <Route path="/" element={<LandingPage />} />
                   <Route path="/login" element={<Login />} />
                   <Route
                     path="/*"

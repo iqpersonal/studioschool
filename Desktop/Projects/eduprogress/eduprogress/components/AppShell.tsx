@@ -107,6 +107,7 @@ const AppShell: React.FC = () => {
                 {roles.includes('super-admin') && (
                     <>
                         <Route path="/" element={<ErrorBoundary scope="dashboard"><Dashboard /></ErrorBoundary>} />
+                        <Route path="/dashboard" element={<ErrorBoundary scope="dashboard"><Dashboard /></ErrorBoundary>} />
                         <Route path="/schools" element={<ErrorBoundary scope="schools"><Schools /></ErrorBoundary>} />
                         <Route path="/modules" element={<ErrorBoundary scope="modules"><Modules /></ErrorBoundary>} />
                         <Route path="/subscriptions" element={<ErrorBoundary scope="subscriptions"><Subscriptions /></ErrorBoundary>} />

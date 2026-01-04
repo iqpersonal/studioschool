@@ -1,7 +1,22 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ChevronRight,
+  ChevronLeft,
+  GraduationCap,
+  Settings,
+  LayoutDashboard
+} from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { SUPER_ADMIN_ROUTES, SCHOOL_ADMIN_ROUTES_BASE, TEACHER_ROUTES_BASE, LIBRARY_ROUTES, FINANCE_ROUTES, SCHOOL_ADMIN_GROUPS } from '../../constants';
+import {
+  SUPER_ADMIN_ROUTES,
+  SCHOOL_ADMIN_ROUTES_BASE,
+  TEACHER_ROUTES_BASE,
+  LIBRARY_ROUTES,
+  FINANCE_ROUTES,
+  SCHOOL_ADMIN_GROUPS
+} from '../../constants';
 
 interface SidebarProps {
   sidebarOpen: boolean;
@@ -14,30 +29,21 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen, isCollap
   const { currentUserData } = useAuth();
   const location = useLocation();
 
-  // FIX: Defensively handle roles that might be a string (legacy) or an array.
   const userRoleData = currentUserData?.role;
   const userRoles = Array.isArray(userRoleData) ? userRoleData : (userRoleData ? [userRoleData] : []);
-
   const isManagementRole = userRoles.some(r => ['school-admin', 'academic-director', 'head-of-section', 'subject-coordinator'].includes(r));
 
-  let routes;
+  // --- Logic to build routes ---
+  let routes: any[] = []; // Typed loosely as 'any' for simplicity, ideally defined route types
   if (userRoles.includes('super-admin')) {
     routes = SUPER_ADMIN_ROUTES;
   } else if (isManagementRole) {
-    // Start with the full base for management roles
-    // Start with the full base for management roles
     routes = [...SCHOOL_ADMIN_ROUTES_BASE];
-
-    // Add Library routes if applicable (School Admin sees everything)
     if (userRoles.includes('school-admin')) {
       routes = [...routes, ...LIBRARY_ROUTES, ...FINANCE_ROUTES];
     }
-
-    // A Head of Section should have a more limited view unless they also hold a higher role.
     const hasHigherManagementRole = userRoles.some(r => ['school-admin', 'academic-director', 'subject-coordinator'].includes(r));
-
     if (userRoles.includes('head-of-section') && !hasHigherManagementRole) {
-      // HOS has a very focused view: Dashboard (My School) and Progress Reports.
       const forbiddenRoutes = ['Manage Users', 'School Settings', 'Timetable', 'Management Assignments'];
       routes = SCHOOL_ADMIN_ROUTES_BASE.filter(route => !forbiddenRoutes.includes(route.name));
     }
@@ -47,175 +53,222 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen, isCollap
     routes = FINANCE_ROUTES;
   } else if (userRoles.includes('teacher')) {
     routes = TEACHER_ROUTES_BASE;
-  } else {
-    routes = []; // No routes for students or other roles
   }
 
-  // State to track which groups are open
-  // Initialize with all groups open by default
-  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() => {
+  // --- Navigation States ---
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     SCHOOL_ADMIN_GROUPS.forEach(g => initial[g.title] = true);
     return initial;
   });
 
   const toggleGroup = (title: string) => {
-    setOpenGroups(prev => ({
-      ...prev,
-      [title]: !prev[title]
-    }));
+    setOpenGroups(prev => ({ ...prev, [title]: !prev[title] }));
   };
 
-  const sidebarContent = (
+  // --- Animation Variants ---
+  const sidebarVariants = {
+    expanded: { width: "16rem", transition: { type: "spring", stiffness: 300, damping: 30 } },
+    collapsed: { width: "5rem", transition: { type: "spring", stiffness: 300, damping: 30 } }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: { opacity: 1, x: 0 }
+  };
+
+  const subMenuVariants = {
+    hidden: { height: 0, opacity: 0, transition: { duration: 0.2, ease: "easeInOut" } },
+    visible: { height: "auto", opacity: 1, transition: { duration: 0.3, ease: "easeOut" } }
+  };
+
+  // --- Helper Components ---
+
+  const NavItem = ({ route, collapsed }: { route: any, collapsed: boolean }) => {
+    const isActive = location.pathname.startsWith(route.path) && route.path !== '/' || location.pathname === route.path;
+
+    return (
+      <Link
+        to={route.path}
+        title={collapsed ? route.name : ''}
+        onClick={() => sidebarOpen && setSidebarOpen(false)}
+        className="relative block"
+      >
+        <motion.div
+          className={`
+             group flex items-center px-3 py-2.5 mx-2 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
+             ${isActive
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25'
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }
+             ${collapsed ? 'justify-center' : ''}
+           `}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+        >
+          {/* Active Glow Indicator */}
+          {isActive && (
+            <motion.div
+              layoutId="activeGlow"
+              className="absolute inset-0 bg-indigo-500/0 rounded-xl"
+              initial={false}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          )}
+
+          <div className="relative z-10 flex-shrink-0">
+            {/* Clone element to change size/color if needed, or just render */}
+            {React.cloneElement(route.icon as React.ReactElement, { size: 20 })}
+          </div>
+
+          {!collapsed && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: "auto" }}
+              exit={{ opacity: 0, width: 0 }}
+              className="ml-3 whitespace-nowrap overflow-hidden text-ellipsis relative z-10"
+            >
+              {route.name}
+            </motion.span>
+          )}
+
+          {/* Hover Tooltip equivalent for collapsed state is handled by native 'title' attribute above, 
+              but we could add a custom motion tooltip here if requested. */}
+        </motion.div>
+      </Link>
+    );
+  };
+
+  const SidebarContent = () => (
     <>
-      <div className={`flex items-center h-16 px-4 border-b border-border flex-shrink-0 ${isCollapsed ? 'justify-center' : ''}`}>
-        <Link to="/" className="flex items-center space-x-2 text-foreground font-bold text-lg overflow-hidden">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-primary flex-shrink-0">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.905 59.905 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0l-2.072-1.036A48.627 48.627 0 0112 10.147a48.627 48.627 0 018.232-4.41l-2.072 1.036m-15.482 0c-.22.08-.433.16-.64.24a59.905 59.905 0 00-2.072-1.036" />
-          </svg>
-          {!isCollapsed && <span className="whitespace-nowrap transition-opacity duration-300">EduProgress</span>}
+      <div className={`flex items-center h-20 px-6 border-b border-white/10 flex-shrink-0 ${isCollapsed ? 'justify-center' : ''}`}>
+        <Link to="/" className="flex items-center gap-3 overflow-hidden">
+          <motion.div
+            whileHover={{ rotate: 15, scale: 1.1 }}
+            className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/20"
+          >
+            <GraduationCap className="text-white w-6 h-6" />
+          </motion.div>
+          {!isCollapsed && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="font-bold text-lg text-white tracking-tight"
+            >
+              EduProgress
+            </motion.div>
+          )}
         </Link>
       </div>
-      <nav className="flex-1 px-2 py-4 space-y-1 overflow-x-hidden">
+
+      <nav className="flex-1 px-2 py-6 space-y-1 overflow-x-hidden overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
         {isManagementRole ? (
-          // Grouped rendering for management roles
+          // Grouped Rendering
           SCHOOL_ADMIN_GROUPS.map((group, groupIndex) => {
-            // Filter routes in this group that the user has access to
             const groupRoutes = routes.filter(r => group.routes.includes(r.name));
-
             if (groupRoutes.length === 0) return null;
-
             const isOpen = openGroups[group.title];
 
             return (
-              <div key={group.title} className={`mb-2 ${groupIndex !== 0 ? 'mt-2' : ''}`}>
+              <div key={group.title} className={`mb-4 ${groupIndex !== 0 ? 'mt-4' : ''}`}>
+                {/* Group Title */}
                 {!isCollapsed && (
-                  <button
+                  <div
                     onClick={() => toggleGroup(group.title)}
-                    className="w-full flex items-center justify-between px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors focus:outline-none"
+                    className="px-4 py-2 flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-300 transition-colors"
                   >
                     <span>{group.title}</span>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className={`h-3 w-3 transition-transform duration-200 ${isOpen ? 'transform rotate-180' : ''}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+                    <motion.div
+                      animate={{ rotate: isOpen ? 90 : 0 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
+                      <ChevronRight size={14} />
+                    </motion.div>
+                  </div>
                 )}
 
-                {/* Render routes if group is open OR if sidebar is collapsed (icon mode always shows items) */}
-                {(isOpen || isCollapsed) && (
-                  <div className="mt-1 space-y-1">
-                    {groupRoutes.map((route) => (
-                      <Link
-                        key={route.name}
-                        to={route.path}
-                        title={isCollapsed ? route.name : ''}
-                        onClick={() => {
-                          if (sidebarOpen) {
-                            setSidebarOpen(false);
-                          }
-                        }}
-                        className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-200
-                          ${location.pathname.startsWith(route.path) && route.path !== '/' || location.pathname === route.path
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                          }
-                          ${isCollapsed ? 'justify-center' : ''}`
-                        }
-                      >
-                        <div className="flex-shrink-0">{route.icon}</div>
-                        {!isCollapsed && <span className="ml-2 whitespace-nowrap overflow-hidden text-ellipsis">{route.name}</span>}
-                      </Link>
-                    ))}
-                  </div>
+                {/* Group Items */}
+                <AnimatePresence initial={false}>
+                  {(isOpen || isCollapsed) && (
+                    <motion.div
+                      initial="hidden"
+                      animate="visible"
+                      exit="hidden"
+                      variants={subMenuVariants}
+                      className="space-y-1"
+                    >
+                      {groupRoutes.map(route => (
+                        <NavItem key={route.name} route={route} collapsed={isCollapsed} />
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Separator Line */}
+                {!isCollapsed && groupIndex !== SCHOOL_ADMIN_GROUPS.length - 1 && (
+                  <div className="mx-4 mt-4 border-b border-white/5" />
                 )}
               </div>
             );
           })
         ) : (
-          // Flat rendering for other roles
-          routes.map((route) => (
-            <Link
-              key={route.name}
-              to={route.path}
-              title={isCollapsed ? route.name : ''}
-              onClick={() => {
-                if (sidebarOpen) {
-                  setSidebarOpen(false);
-                }
-              }}
-              className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-all duration-200
-                ${location.pathname.startsWith(route.path) && route.path !== '/' || location.pathname === route.path
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                }
-                ${isCollapsed ? 'justify-center' : ''}`
-              }
-            >
-              <div className="flex-shrink-0">{route.icon}</div>
-              {!isCollapsed && <span className="ml-2 whitespace-nowrap overflow-hidden text-ellipsis">{route.name}</span>}
-            </Link>
+          // Flat Rendering
+          routes.map(route => (
+            <NavItem key={route.name} route={route} collapsed={isCollapsed} />
           ))
         )}
       </nav>
     </>
   );
 
-  const toggleButton = (
-    <div className="hidden lg:flex p-4 border-t border-white/20 justify-end bg-transparent">
-      <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="p-2 rounded-md hover:bg-accent text-muted-foreground transition-colors"
-        aria-label={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-      >
-        {isCollapsed ? (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
-          </svg>
-        )}
-      </button>
-    </div>
-  );
-
   return (
     <>
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        ></div>
-      )}
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Mobile Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col w-64 bg-white/10 backdrop-blur-md border-r border-white/20 transition-transform duration-300 ease-in-out lg:hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
+      <motion.div
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col w-72 bg-slate-900 border-r border-white/10 lg:hidden`}
+        initial={{ x: "-100%" }}
+        animate={{ x: sidebarOpen ? 0 : "-100%" }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
       >
-        <div className="flex flex-col flex-1 overflow-y-auto">
-          {sidebarContent}
-        </div>
-      </div>
+        <SidebarContent />
+      </motion.div>
 
-      {/* Static sidebar for desktop */}
-      <div className={`hidden lg:flex lg:flex-shrink-0 h-full transition-all duration-300 ease-in-out ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        <div className="flex flex-col w-full border-r border-white/20 bg-white/10 backdrop-blur-md h-full">
-          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
-            {sidebarContent}
-          </div>
-          {toggleButton}
+      {/* Desktop Sidebar */}
+      <motion.div
+        className="hidden lg:flex h-full flex-col border-r border-white/5 bg-slate-950 text-white relative flex-shrink-0 z-20"
+        variants={sidebarVariants}
+        animate={isCollapsed ? "collapsed" : "expanded"}
+      >
+        {/* Background Gradient Effect */}
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none" />
+
+        <SidebarContent />
+
+        {/* Collapse Button */}
+        <div className="p-4 border-t border-white/10 flex justify-end">
+          <motion.button
+            whileHover={{ scale: 1.1, backgroundColor: "rgba(255,255,255,0.1)" }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-2 rounded-lg text-slate-400 hover:text-white transition-colors"
+          >
+            {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
     </>
   );
 };

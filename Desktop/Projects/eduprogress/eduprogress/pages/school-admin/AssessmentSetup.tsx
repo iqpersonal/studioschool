@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import { useAcademicYear } from '../../hooks/useAcademicYear';
+import { useAssessmentStructures } from '../../hooks/queries/useAssessmentStructures';
+import { useAcademicMutations } from '../../hooks/mutations/useAcademicMutations';
 import { Subject, AssessmentStructure, MainAssessment, SubAssessment } from '../../types';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -17,29 +19,30 @@ const AssessmentSetup: React.FC = () => {
 
     const [subjects, setSubjects] = useState<Subject[]>([]);
     const [grades, setGrades] = useState<string[]>([]);
-
     const [selectedGrade, setSelectedGrade] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
-
     const [structure, setStructure] = useState<Partial<AssessmentStructure>>({ assessments: [] });
-    const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const structureQuery = useAssessmentStructures({
+        schoolId: currentUserData?.schoolId,
+        academicYear: selectedAcademicYear,
+        grade: selectedGrade,
+        subjectId: selectedSubjectId
+    });
+
+    const { createAssessmentStructure, updateAssessmentStructure } = useAcademicMutations();
+
     useEffect(() => {
         if (!currentUserData?.schoolId) return;
-
-        // Fetch subjects
         getDocs(query(collection(db, 'subjects'), where('schoolId', '==', currentUserData.schoolId)))
             .then(snap => {
                 const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Subject));
                 setSubjects(data.sort((a, b) => a.name.localeCompare(b.name)));
             });
-
-        // Fetch grades
         const standardGrades = ['KG 1', 'KG 2', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
         setGrades(standardGrades);
-
     }, [currentUserData?.schoolId]);
 
     useEffect(() => {
@@ -47,32 +50,13 @@ const AssessmentSetup: React.FC = () => {
             setStructure({ assessments: [] });
             return;
         }
-
-        setStructure({ assessments: [] }); // Reset structure to avoid stale data
-        setLoading(true);
-        setError(null); // Reset error state
-        getDocs(query(collection(db, 'assessmentStructures'),
-            where('schoolId', '==', currentUserData.schoolId),
-            where('academicYear', '==', selectedAcademicYear),
-            where('grade', '==', selectedGrade),
-            where('subjectId', '==', selectedSubjectId),
-            limit(1)
-        ))
-            .then(snap => {
-                if (!snap.empty) {
-                    setStructure({ id: snap.docs[0].id, ...snap.docs[0].data() } as AssessmentStructure);
-                } else {
-                    setStructure({ assessments: [] });
-                }
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error(err);
-                setError(err.message || "Failed to load assessment structure.");
-                setLoading(false);
-            });
-
-    }, [currentUserData?.schoolId, selectedAcademicYear, selectedGrade, selectedSubjectId]);
+        if (structureQuery.data && structureQuery.data.length > 0) {
+            setStructure({ id: structureQuery.data[0].id, ...structureQuery.data[0] } as AssessmentStructure);
+        } else {
+            setStructure({ assessments: [] });
+        }
+        setError(null);
+    }, [structureQuery.data, currentUserData?.schoolId, selectedAcademicYear, selectedGrade, selectedSubjectId]);
 
     const addMainAssessment = () => {
         const newMain: MainAssessment = {
@@ -90,7 +74,6 @@ const AssessmentSetup: React.FC = () => {
     const updateMainAssessment = (index: number, field: keyof MainAssessment, value: string | number) => {
         setStructure(prev => {
             const newAssessments = [...(prev.assessments || [])];
-            // @ts-ignore - dynamic assignment
             newAssessments[index] = { ...newAssessments[index], [field]: value };
             return { ...prev, assessments: newAssessments };
         });
@@ -146,24 +129,18 @@ const AssessmentSetup: React.FC = () => {
 
         if (!currentUserData?.schoolId || !selectedAcademicYear || !selectedGrade || !selectedSubjectId) {
             const msg = "Missing required fields. Please ensure Grade and Subject are selected.";
-            console.error(msg, {
-                schoolId: currentUserData?.schoolId,
-                year: selectedAcademicYear,
-                grade: selectedGrade,
-                subject: selectedSubjectId
-            });
+            console.error(msg, { schoolId: currentUserData?.schoolId, year: selectedAcademicYear, grade: selectedGrade, subject: selectedSubjectId });
             setError(msg);
             return;
         }
 
-        // Validation
         const totalWeightage = structure.assessments?.reduce((sum, a) => sum + Number(a.weightage), 0) || 0;
         console.log("Total Weightage:", totalWeightage);
 
         if (totalWeightage !== 100) {
             const msg = `Total weightage must be 100%. Current total: ${totalWeightage}%`;
             setError(msg);
-            alert(msg); // Keep alert for immediate feedback too
+            alert(msg);
             return;
         }
 
@@ -183,13 +160,10 @@ const AssessmentSetup: React.FC = () => {
             console.log("Attempting to save data:", dataToSave);
 
             if (structure.id) {
-                await updateDoc(doc(db, 'assessmentStructures', structure.id), dataToSave);
+                await updateAssessmentStructure(structure.id, dataToSave);
                 console.log("Update successful");
             } else {
-                await addDoc(collection(db, 'assessmentStructures'), {
-                    ...dataToSave,
-                    createdAt: serverTimestamp()
-                });
+                await createAssessmentStructure(dataToSave);
                 console.log("Create successful");
             }
             alert('Assessment structure saved successfully!');
@@ -201,6 +175,8 @@ const AssessmentSetup: React.FC = () => {
             setSaving(false);
         }
     };
+
+    const isLoading = structureQuery.isLoading;
 
     return (
         <div className="space-y-6">
@@ -248,7 +224,7 @@ const AssessmentSetup: React.FC = () => {
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        {loading ? <Loader /> : (
+                        {isLoading ? <Loader /> : (
                             <div className="space-y-6">
                                 {structure.assessments?.map((main, mIndex) => (
                                     <div key={main.id} className="border rounded-lg p-4 bg-secondary/10">

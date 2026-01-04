@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../services/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { UserProfile, TeacherAssignment, ManagementAssignment } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
 import { useAcademicYear } from '../../hooks/useAcademicYear';
@@ -10,14 +10,14 @@ import Loader from '../../components/ui/Loader';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 
+// Phase 3D Step 3: Import React Query hooks to replace onSnapshot listeners
+import { useStudentsByYear } from '../../hooks/queries/useStudentsByYear';
+import { useTeacherAssignments } from '../../hooks/queries/useTeacherAssignments';
+import { useManagementAssignments } from '../../hooks/queries/useManagementAssignments';
+
 const GradesAndSections: React.FC = () => {
   const { currentUserData } = useAuth();
   const { selectedAcademicYear } = useAcademicYear();
-  const [students, setStudents] = useState<UserProfile[]>([]);
-  const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
-  const [managementAssignments, setManagementAssignments] = useState<ManagementAssignment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // State for filters
@@ -25,97 +25,92 @@ const GradesAndSections: React.FC = () => {
   const [selectedGroup, setSelectedGroup] = useState('');
   const [selectedGrade, setSelectedGrade] = useState('');
   const [selectedSection, setSelectedSection] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const userRoleData = currentUserData?.role;
   const userRoles = Array.isArray(userRoleData) ? userRoleData : (userRoleData ? [userRoleData] : []);
   const isHeadOfSection = userRoles.includes('head-of-section');
 
-
+  // TEMPORARY: Test query to check if students exist at all
   useEffect(() => {
-    if (!currentUserData?.schoolId || !selectedAcademicYear) {
-      setStudents([]);
-      setLoading(false);
-      return;
-    }
-    const schoolId = currentUserData.schoolId;
-
-    setLoading(true);
-    let queriesCompleted = 0;
-    const totalQueries = isHeadOfSection ? 3 : 2;
-    const unsubscribes: (() => void)[] = [];
-
-    const onQueryDone = () => {
-      queriesCompleted++;
-      if (queriesCompleted >= totalQueries) {
-        setLoading(false);
-      }
-    };
-
-    const usersQueryRef = query(collection(db, 'users'),
-      where('schoolId', '==', schoolId),
-      where('academicYear', '==', selectedAcademicYear)
-    );
-
-    const usersUnsubscribe = onSnapshot(usersQueryRef,
-      (snapshot) => {
-        const allUsers = snapshot.docs.map(doc => doc.data() as UserProfile);
-        const studentsData = allUsers.filter(u => {
-          const roles = Array.isArray(u.role) ? u.role : (u.role ? [u.role] : []);
-          return roles.includes('student') && u.status !== 'archived';
-        });
-        setStudents(studentsData);
-        onQueryDone();
-      },
-      (err) => {
-        console.error("Error fetching students for grades/sections:", err);
-        setError("Failed to load student data. Check permissions and database indexes.");
-        onQueryDone();
-      }
-    );
-    unsubscribes.push(usersUnsubscribe);
-
-    const assignmentsUnsubscribe = onSnapshot(query(collection(db, 'teacherAssignments'),
-      where('schoolId', '==', schoolId)
-    ),
-      (snapshot) => {
-        const assignmentsData = snapshot.docs.map(doc => doc.data() as TeacherAssignment);
-        setAssignments(assignmentsData);
-        onQueryDone();
-      },
-      (err) => {
-        console.error("Error fetching assignments:", err);
-        setError("Failed to load teacher assignment data.");
-        onQueryDone();
-      }
-    );
-    unsubscribes.push(assignmentsUnsubscribe);
-
-    if (isHeadOfSection) {
-      const managementAssignmentsUnsubscribe = onSnapshot(query(collection(db, 'managementAssignments'),
-        where('schoolId', '==', schoolId),
-        where('userId', '==', currentUserData.uid)
-      ),
-        (snapshot) => {
-          const assignmentsData = snapshot.docs.map(doc => doc.data() as ManagementAssignment);
-          setManagementAssignments(assignmentsData);
-          onQueryDone();
-        },
-        (err) => {
-          console.error("Error fetching management assignments:", err);
-          setError(prev => `${prev || ''} Failed to load your assigned scopes.`);
-          onQueryDone();
-        }
+    const testQuery = async () => {
+      if (!currentUserData?.schoolId) return;
+      
+      // Try fetching ALL users for this school first
+      const testQ = query(
+        collection(db, 'users'),
+        where('schoolId', '==', currentUserData.schoolId)
       );
-      unsubscribes.push(managementAssignmentsUnsubscribe);
-    }
-
-    return () => {
-      unsubscribes.forEach(unsub => unsub());
+      try {
+        const snapshot = await getDocs(testQ);
+        console.log('TEST: Total USERS in school:', snapshot.size);
+        
+        // Check how many have student role
+        let studentsWithArrayRole = 0;
+        let studentsWithStringRole = 0;
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (Array.isArray(data.role) && data.role.includes('student')) {
+            studentsWithArrayRole++;
+          } else if (data.role === 'student') {
+            studentsWithStringRole++;
+          }
+        });
+        console.log('TEST: Students with array role:', studentsWithArrayRole);
+        console.log('TEST: Students with string role:', studentsWithStringRole);
+        console.log('TEST: Total students in school:', studentsWithArrayRole + studentsWithStringRole);
+        if (snapshot.size > 0) {
+          const firstStudent = snapshot.docs[0].data();
+          console.log('TEST: First student fields:', Object.keys(firstStudent));
+          console.log('TEST: First student academicYear:', firstStudent.academicYear);
+        }
+      } catch (error) {
+        console.error('TEST: Error fetching students:', error);
+      }
     };
-  }, [currentUserData, isHeadOfSection, selectedAcademicYear]);
+    testQuery();
+  }, [currentUserData?.schoolId]);
+
+  // Phase 3D Step 3: Replace 3 onSnapshot with React Query hooks
+  const studentsQuery = useStudentsByYear({
+    schoolId: currentUserData?.schoolId,
+    academicYear: selectedAcademicYear,
+  });
+
+  const assignmentsQuery = useTeacherAssignments({
+    schoolId: currentUserData?.schoolId,
+  });
+
+  const managementAssignmentsQuery = useManagementAssignments({
+    schoolId: currentUserData?.schoolId,
+    userId: isHeadOfSection ? currentUserData?.uid : undefined,
+  });
+
+  // Extract data from hooks
+  const students = studentsQuery.data || [];
+  const assignments = assignmentsQuery.data || [];
+  const managementAssignments = managementAssignmentsQuery.data || [];
+
+  // Debug logging
+  console.log('GradesAndSections Query Status:', {
+    studentsQueryEnabled: studentsQuery.isLoading !== undefined,
+    studentsQueryError: studentsQuery.error?.message,
+    studentsQueryData: studentsQuery.data,
+  });
+  console.log('GradesAndSections Debug:', {
+    schoolId: currentUserData?.schoolId,
+    academicYear: selectedAcademicYear,
+    studentsCount: students.length,
+    studentsLoading: studentsQuery.isLoading,
+    assignmentsCount: assignments.length,
+    managementCount: managementAssignments.length
+  });
+
+  // Aggregated loading state
+  const isLoading = studentsQuery.isLoading || assignmentsQuery.isLoading || managementAssignmentsQuery.isLoading;
 
   const scopedStudents = useMemo(() => {
-    let studentsInScope = students; // Already filtered by academic year from useEffect
+    let studentsInScope = students;
 
     // If the user has the 'head-of-section' role, their view is ALWAYS scoped by their assignments.
     if (userRoles.includes('head-of-section') && managementAssignments.length > 0) {
@@ -188,7 +183,6 @@ const GradesAndSections: React.FC = () => {
     });
   }, [scopedStudents, selectedMajor, selectedGroup, selectedGrade, selectedSection]);
 
-
   const combinedGradeSections = useMemo(() => {
     const assignmentsByClass = new Map<string, TeacherAssignment[]>();
     assignments.forEach(assignment => {
@@ -214,7 +208,6 @@ const GradesAndSections: React.FC = () => {
       `${a.grade} ${a.section}`.localeCompare(`${b.grade} ${b.section}`, undefined, { numeric: true, sensitivity: 'base' })
     );
   }, [filteredStudents, assignments]);
-
 
   return (
     <div className="space-y-6">
@@ -248,7 +241,7 @@ const GradesAndSections: React.FC = () => {
               {sectionOptions.map(section => <option key={section} value={section}>{section}</option>)}
             </Select>
           </div>
-          {loading ? <Loader /> : error ? <p className="text-destructive">{error}</p> : (
+          {isLoading ? <Loader /> : error ? <p className="text-destructive">{error}</p> : (
             combinedGradeSections.length === 0 ? (
               <div className="text-center py-10 border rounded-lg bg-secondary/50">
                 <h3 className="text-lg font-semibold">No Combinations Found</h3>
@@ -293,3 +286,7 @@ const GradesAndSections: React.FC = () => {
 };
 
 export default GradesAndSections;
+
+
+
+

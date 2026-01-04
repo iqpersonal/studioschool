@@ -1,4 +1,4 @@
-// Force update
+﻿// Force update
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, doc, updateDoc, addDoc, deleteDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { db, functions } from '../../services/firebase';
@@ -48,6 +48,8 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 const TimetableManagement: React.FC = () => {
     const { currentUserData } = useAuth();
     const schoolId = currentUserData?.schoolId;
+
+        const schoolId = currentUserData?.schoolId;
     const queryClient = useQueryClient();
 
     // React Query Hooks - Data Management (replaces 12 useState calls)
@@ -141,7 +143,11 @@ const TimetableManagement: React.FC = () => {
         setTimeout(() => window.print(), 100);
     };
 
-    // UI Debug State
+    // Hierarchy State
+    // MajorName -> GroupName -> GradeName -> Set<SectionName>
+    const [hierarchy, setHierarchy] = useState<{ [major: string]: { [group: string]: { [grade: string]: Set<string> } } }>({});
+    const [isHierarchyLoaded, setIsHierarchyLoaded] = useState(false);
+    const [cachedStudents, setCachedStudents] = useState<UserProfile[]>([]);
     const [showDebug, setShowDebug] = useState(false);
 
     // Sync selectedDivisionId with groupDivisionMap when groups are selected
@@ -164,6 +170,157 @@ const TimetableManagement: React.FC = () => {
     const handleSaveConstraints = (updatedTeacher: UserProfile) => {
         setTeachers(prev => prev.map(t => t.uid === updatedTeacher.uid ? updatedTeacher : t));
     };
+
+    // Fetch Data
+    useEffect(() => {
+        if (!schoolId) return;
+
+        const fetchData = async () => {
+            try {
+                // Fetch School for working days and active academic year
+                const schoolDocRef = doc(db, 'schools', schoolId);
+                const schoolDoc = await getDoc(schoolDocRef);
+                let activeYear = '';
+                if (schoolDoc.exists()) {
+                    const data = schoolDoc.data();
+                    setWorkingDays(data?.workingDays || ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"]);
+                    activeYear = data?.activeAcademicYear || '';
+                }
+
+                // Fetch Majors, Groups, Grades, Sections, Subjects, Divisions, TimeSlots
+                const fetchBasics = Promise.all([
+                    getDocs(query(collection(db, 'schoolDivisions'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timeSlots'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'majors'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'groups'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'grades'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'sections'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'subjects'), where('schoolId', '==', schoolId))),
+                ]).then(([divSnap, slotSnap, majSnap, grpSnap, grdSnap, secSnap, subSnap]) => {
+                    setDivisions(divSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as SchoolDivision)));
+                    setTimeSlots(slotSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeSlot)).sort((a, b) => a.startTime.localeCompare(b.startTime)));
+                    setMajors(majSnap.docs.map(d => ({ id: d.id, ...d.data() } as Major)));
+                    setGroups(grpSnap.docs.map(d => ({ id: d.id, ...d.data() } as Group)));
+                    setGrades(grdSnap.docs.map(d => ({ id: d.id, ...d.data() } as Grade)));
+                    setSections(secSnap.docs.map(d => ({ id: d.id, ...d.data() } as Section)));
+                    setSubjects(subSnap.docs.map(d => ({ id: d.id, ...d.data() } as Subject)));
+                }).catch(err => console.error("Error fetching basics:", err));
+
+                // Fetch Teachers
+                // Fetch Teachers (Handle both string and array roles)
+                // Fetch Teachers (Handle both string and array roles, plus other academic roles who might teach)
+                const teacherRoles = ['teacher', 'head-of-section', 'subject-coordinator', 'academic-director'];
+
+                const fetchQueries = teacherRoles.flatMap(role => [
+                    getDocs(query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', 'array-contains', role))),
+                    getDocs(query(collection(db, 'users'), where('schoolId', '==', schoolId), where('role', '==', role)))
+                ]);
+
+                const fetchTeachers = Promise.all(fetchQueries)
+                    .then((snaps) => {
+                        const teacherMap = new Map();
+
+                        snaps.forEach(snap => {
+                            snap.docs.forEach(doc => {
+                                if (!teacherMap.has(doc.id)) {
+                                    teacherMap.set(doc.id, { uid: doc.id, ...doc.data() });
+                                }
+                            });
+                        });
+
+                        const allTeachers = Array.from(teacherMap.values()) as UserProfile[];
+                        console.log("Fetched Teachers (Merged):", allTeachers.map(t => ({ name: t.name, role: t.role })));
+                        setTeachers(allTeachers);
+                    })
+                    .catch(err => console.error("Error fetching teachers:", err));
+
+                // Fetch Hierarchy (Students)
+                const fetchHierarchyData = async () => {
+                    if (!activeYear) {
+                        console.warn("No active academic year found. Skipping student hierarchy fetch.");
+                        setIsHierarchyLoaded(true); // Mark as loaded (but empty) to avoid fallback to "Show All"
+                        return;
+                    }
+                    try {
+                        const studentsQuery1 = query(collection(db, 'users'),
+                            where('schoolId', '==', schoolId),
+                            where('academicYear', '==', activeYear),
+                            where('role', '==', 'student')
+                        );
+                        const studentsSnap = await getDocs(studentsQuery1);
+
+                        // Also fetch array-contains 'student' to be safe
+                        const studentsQuery2 = query(collection(db, 'users'),
+                            where('schoolId', '==', schoolId),
+                            where('academicYear', '==', activeYear),
+                            where('role', 'array-contains', 'student')
+                        );
+                        const studentsSnapArray = await getDocs(studentsQuery2);
+
+                        const newHierarchy: { [major: string]: { [group: string]: { [grade: string]: Set<string> } } } = {};
+                        const processedIds = new Set();
+                        const allStudents: UserProfile[] = [];
+
+                        [...studentsSnap.docs, ...studentsSnapArray.docs].forEach(doc => {
+                            if (processedIds.has(doc.id)) return;
+                            processedIds.add(doc.id);
+
+                            const data = doc.data() as UserProfile;
+                            allStudents.push({ uid: doc.id, ...data });
+
+                            // Use Major Name if available, or ID if that's what's stored. 
+                            // The UserProfile type says 'major?: string; // from E_Major_Desc'. 
+                            // Usually this is the NAME. But our dropdown uses IDs.
+                            // We need to match what's in the dropdown.
+                            // The dropdown uses `majors` collection IDs.
+                            // If UserProfile stores Major NAME, we need to map it.
+                            // Let's assume UserProfile stores Major NAME for now as per type hint.
+
+                            const majorName = data.major;
+                            const groupName = data.group;
+                            const gradeName = data.grade;
+                            const sectionName = data.section;
+
+                            if (majorName && groupName && gradeName && sectionName) {
+                                if (!newHierarchy[majorName]) newHierarchy[majorName] = {};
+                                if (!newHierarchy[majorName][groupName]) newHierarchy[majorName][groupName] = {};
+                                if (!newHierarchy[majorName][groupName][gradeName]) newHierarchy[majorName][groupName][gradeName] = new Set();
+                                newHierarchy[majorName][groupName][gradeName].add(sectionName);
+                            }
+                        });
+                        setHierarchy(newHierarchy);
+                        setCachedStudents(allStudents);
+                        setIsHierarchyLoaded(true);
+                    } catch (e) {
+                        console.error("Error fetching hierarchy:", e);
+                        setIsHierarchyLoaded(true); // Mark as loaded (failed) to avoid fallback
+                    }
+                };
+
+                // Fetch Timetable Entries, Allocations & Teacher Assignments
+                console.log("Fetching entries for schoolId:", schoolId);
+                const fetchEntries = Promise.all([
+                    getDocs(query(collection(db, 'timetableEntries'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'teacherAssignments'), where('schoolId', '==', schoolId)))
+                ]).then(([entrySnap, allocSnap, assignSnap]) => {
+                    console.log("Fetched entries count:", entrySnap.size);
+                    console.log("Fetched allocations count:", allocSnap.size);
+                    setAllEntries(entrySnap.docs.map(d => ({ id: d.id, ...d.data() } as TimetableEntry)));
+                    setAllocations(allocSnap.docs.map(d => ({ id: d.id, ...d.data() } as SubjectAllocation)));
+                    setTeacherAssignments(assignSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherAssignment)));
+                }).catch(err => console.error("Error fetching entries:", err));
+
+                await Promise.all([fetchBasics, fetchTeachers, fetchEntries, fetchHierarchyData()]);
+                setLoading(false);
+            } catch (err) {
+                console.error("Error in main fetch:", err);
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [schoolId, isDivisionModalOpen, isTimeSlotModalOpen, itemToDelete]);
 
     const refreshData = () => {
         setLoading(true);
@@ -470,15 +627,20 @@ const TimetableManagement: React.FC = () => {
             let existingEntriesForGen: TimetableEntry[] = [];
             let allDivisions = divisions;
 
-            // 1. Use Data from React Query hooks (already fetched)
+            // 1. Fetch Data (if Global) or Use State
             if (generationScope === 'global') {
-                // All data already available from hooks, no need to fetch
-                allDivisions = divisions;
-                
-                const globalAllocations = allocations;
-                const globalAssignments = teacherAssignments;
-                activeSlotsForGen = timeSlots;
-                allDivisions = divisions;
+                const [allAllocSnap, allAssignSnap, allSlotsSnap, allEntriesSnap, allDivsSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'subjectAllocations'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'teacherAssignments'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timeSlots'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'timetableEntries'), where('schoolId', '==', schoolId))),
+                    getDocs(query(collection(db, 'schoolDivisions'), where('schoolId', '==', schoolId)))
+                ]);
+
+                const globalAllocations = allAllocSnap.docs.map(d => ({ id: d.id, ...d.data() } as SubjectAllocation));
+                const globalAssignments = allAssignSnap.docs.map(d => ({ id: d.id, ...d.data() } as TeacherAssignment));
+                activeSlotsForGen = allSlotsSnap.docs.map(d => ({ id: d.id, ...d.data() } as TimeSlot));
+                allDivisions = allDivsSnap.docs.map(d => ({ id: d.id, ...d.data() } as SchoolDivision));
                 existingEntriesForGen = []; // Clear for global regen
 
                 // Merge Assignments
@@ -595,21 +757,13 @@ const TimetableManagement: React.FC = () => {
                 return;
             }
 
-            // Remove undefined fields and filter invalid allocations
-                const cleanData = (obj: any) => JSON.parse(JSON.stringify(obj));
-                const filteredAllocations = mergedAllocations.filter(a => a.gradeId && a.sectionId);
-
-            const requestRef = await addDoc(collection(db, 'timetable_requests'), cleanData({
+            const requestRef = await addDoc(collection(db, 'timetable_requests'), {
                 schoolId,
                 status: 'pending',
                 progress: { current: 0, total: 0 },
                 createdAt: new Date().toISOString(),
-                allocations: filteredAllocations,
-                teachers: teachers.map(t => {
-                    const obj: any = { uid: t.uid, name: t.name };
-                    if (t.unavailableSlots) obj.unavailableSlots = t.unavailableSlots;
-                    return obj;
-                }),
+                allocations: mergedAllocations,
+                teachers: teachers.map(t => ({ uid: t.uid, name: t.name, unavailableSlots: t.unavailableSlots })),
                 timeSlots: activeSlotsWithNames, // Send ALL slots
                 allTimeSlots: activeSlotsWithNames,
                 existingEntries: existingEntriesForGen,
@@ -622,7 +776,7 @@ const TimetableManagement: React.FC = () => {
                     groupDivisionMap: groupDivisionMap
                 } : null,
                 divisions: divisions // Send divisions for reference
-            }));
+            });
 
             // 3. Listen for Updates
             const unsubscribe = onSnapshot(requestRef, (snap) => {
@@ -795,7 +949,7 @@ const TimetableManagement: React.FC = () => {
             if (!ta.periodsPerWeek || ta.periodsPerWeek <= 0) issues.push('Invalid Periods Per Week');
 
             // Check references
-            // Robust normalization: lowercase, trim, and remove non-alphanumeric characters (to handle ' vs ’ vs none)
+            // Robust normalization: lowercase, trim, and remove non-alphanumeric characters (to handle ' vs â€™ vs none)
             const normalize = (s: string) => s?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
 
             const gradeExists = grades.some(g => normalize(g.name) === normalize(ta.grade));
@@ -1047,7 +1201,7 @@ const TimetableManagement: React.FC = () => {
                             {isGenerating ? (
                                 <div className="flex flex-col items-center gap-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="animate-spin">✨</span>
+                                        <span className="animate-spin">âœ¨</span>
                                         <span>Generating... {generationProgress.total > 0 ? `${generationProgress.current}/${generationProgress.total}` : ''}</span>
                                     </div>
                                     {generationProgress.total > 0 ? (
@@ -1065,7 +1219,7 @@ const TimetableManagement: React.FC = () => {
                                 </div>
                             ) : (
                                 <>
-                                    <span className="mr-2">✨</span> Auto-Generate
+                                    <span className="mr-2">âœ¨</span> Auto-Generate
                                 </>
                             )}
                         </Button>
@@ -1115,7 +1269,7 @@ const TimetableManagement: React.FC = () => {
 
                             {!selectedGradeId && (
                                 <div className="flex items-center text-sm text-muted-foreground pb-2 h-10">
-                                    <span className="mr-2">ℹ️</span> Select a Grade and Section to view or edit the timetable.
+                                    <span className="mr-2">â„¹ï¸</span> Select a Grade and Section to view or edit the timetable.
                                 </div>
                             )}
                         </div>
@@ -2141,13 +2295,5 @@ const TimetableManagement: React.FC = () => {
 };
 
 export default TimetableManagement;
-
-
-
-
-
-
-
-
 
 
