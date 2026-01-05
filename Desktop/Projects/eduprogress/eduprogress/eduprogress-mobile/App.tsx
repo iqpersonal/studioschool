@@ -1,8 +1,6 @@
-/// <reference types="nativewind/types" />
-import "./global.css";
 import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
-import { Text, View, TextInput, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, Platform } from 'react-native';
 import { auth } from './src/services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -32,14 +30,14 @@ export default function App() {
 
   if (user) {
     return (
-      <SafeAreaView className="flex-1 bg-slate-950 items-center justify-center">
-        <Text className="text-white text-2xl font-bold mb-4">Welcome Back!</Text>
-        <Text className="text-slate-400 mb-8">{user.email}</Text>
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.title}>Welcome Back!</Text>
+        <Text style={styles.subtitle}>{user.email}</Text>
         <TouchableOpacity
-          className="bg-red-600 px-6 py-3 rounded-full"
+          style={styles.buttonLogout}
           onPress={() => setUser(null)}
         >
-          <Text className="text-white font-semibold">Sign Out</Text>
+          <Text style={styles.buttonText}>Sign Out</Text>
         </TouchableOpacity>
         <StatusBar style="light" />
       </SafeAreaView>
@@ -47,21 +45,21 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950 items-center justify-center p-6">
-      <View className="w-full max-w-sm">
-        <View className="items-center mb-10">
-          <View className="w-20 h-20 bg-indigo-600 rounded-2xl items-center justify-center mb-4 transform rotate-3">
-            <Text className="text-white text-4xl font-bold">E</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <View style={styles.logo}>
+            <Text style={styles.logoText}>E</Text>
           </View>
-          <Text className="text-3xl font-bold text-white tracking-tight">EduProgress</Text>
-          <Text className="text-slate-400 mt-2">Sign in to continue</Text>
+          <Text style={styles.appName}>EduProgress</Text>
+          <Text style={styles.subtitle}>Sign in to continue</Text>
         </View>
 
-        <View className="space-y-4">
-          <View>
-            <Text className="text-slate-300 font-medium mb-2 ml-1">Email</Text>
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email</Text>
             <TextInput
-              className="bg-slate-900 text-white border border-slate-700 rounded-xl px-4 py-4 text-base"
+              style={styles.input}
               placeholder="name@school.com"
               placeholderTextColor="#64748b"
               autoCapitalize="none"
@@ -70,10 +68,10 @@ export default function App() {
             />
           </View>
 
-          <View className="mt-4">
-            <Text className="text-slate-300 font-medium mb-2 ml-1">Password</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
             <TextInput
-              className="bg-slate-900 text-white border border-slate-700 rounded-xl px-4 py-4 text-base"
+              style={styles.input}
               placeholder="••••••••"
               placeholderTextColor="#64748b"
               secureTextEntry
@@ -83,14 +81,14 @@ export default function App() {
           </View>
 
           <TouchableOpacity
-            className="bg-indigo-600 rounded-xl py-4 mt-8 items-center justify-center shadow-lg shadow-indigo-500/20"
+            style={styles.button}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text className="text-white font-bold text-lg">Sign In</Text>
+              <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -99,3 +97,97 @@ export default function App() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#020617', // Slate 950
+    padding: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    backgroundColor: '#4f46e5', // Indigo 600
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    transform: [{ rotate: '3deg' }],
+  },
+  logoText: {
+    color: 'white',
+    fontSize: 36,
+    fontWeight: 'bold',
+  },
+  appName: {
+    fontSize: 30,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: '#94a3b8', // Slate 400
+    fontSize: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 16,
+  },
+  form: {
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    color: '#cbd5e1', // Slate 300
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  input: {
+    backgroundColor: '#0f172a', // Slate 900
+    color: 'white',
+    borderColor: '#334155', // Slate 700
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+  },
+  button: {
+    backgroundColor: '#4f46e5', // Indigo 600
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginTop: 32,
+    alignItems: 'center',
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buttonLogout: {
+    backgroundColor: '#dc2626', // Red 600
+    borderRadius: 999,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+});
