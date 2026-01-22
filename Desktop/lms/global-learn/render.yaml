@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: global-learn-api
+    env: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    autoDeploy: false
+
+databases:
+  - name: global-learn-db
+    databaseName: global_learn
+    user: global_learn_user
+
+  - name: global-learn-mongo
+    plan: starter
