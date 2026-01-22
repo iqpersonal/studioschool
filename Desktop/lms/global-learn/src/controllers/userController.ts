@@ -28,4 +28,14 @@ export class UserController {
             res.status(500).json({ message: 'Error updating user profile', error });
         }
     }
+
+    public async getUserActivity(req: Request, res: Response): Promise<void> {
+        try {
+            const userId = req.params.id;
+            const activity = await this.userService.getUserActivity(userId);
+            res.status(200).json(activity);
+        } catch (error) {
+            res.status(500).json({ message: 'Error fetching user activity', error });
+        }
+    }
 }

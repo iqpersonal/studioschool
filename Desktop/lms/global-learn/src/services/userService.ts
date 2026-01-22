@@ -1,19 +1,46 @@
-import { User } from '../models/user';
+import User from '../models/user';
 
 export class UserService {
-    async getUserById(userId: string): Promise<User | null> {
-        // Logic to fetch user by ID from the database
+    async getUserById(userId: string): Promise<any | null> {
+        try {
+            return await User.findById(userId).select('-password');
+        } catch (error) {
+            throw new Error('Error fetching user');
+        }
     }
 
-    async updateUser(userId: string, userData: Partial<User>): Promise<User | null> {
-        // Logic to update user information in the database
+    async updateUser(userId: string, userData: any): Promise<any | null> {
+        try {
+            return await User.findByIdAndUpdate(userId, userData, { new: true }).select('-password');
+        } catch (error) {
+            throw new Error('Error updating user');
+        }
     }
 
     async deleteUser(userId: string): Promise<boolean> {
-        // Logic to delete a user from the database
+        try {
+            await User.findByIdAndDelete(userId);
+            return true;
+        } catch (error) {
+            throw new Error('Error deleting user');
+        }
     }
 
-    async getAllUsers(): Promise<User[]> {
-        // Logic to fetch all users from the database
+    async getAllUsers(): Promise<any[]> {
+        try {
+            return await User.find().select('-password');
+        } catch (error) {
+            throw new Error('Error fetching users');
+        }
+    }
+
+    async getUserActivity(userId: string): Promise<any> {
+        // Mock implementation - would typically fetch from database
+        return {
+            userId,
+            activities: [],
+            lastLogin: new Date(),
+            totalSessions: 0
+        };
     }
 }

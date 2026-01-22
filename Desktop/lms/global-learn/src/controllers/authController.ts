@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { UserService } from '../services/authService';
 
 class AuthController {
@@ -40,6 +40,22 @@ class AuthController {
             return res.status(200).json({ message: 'Login successful', token });
         } catch (error) {
             return res.status(500).json({ message: 'Error logging in', error });
+        }
+    }
+
+    public async getProfile(req: Request, res: Response): Promise<Response> {
+        try {
+            // req.user is set by authMiddleware
+            const user = (req as any).user;
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
+            }
+            
+            // Return user profile without password
+            const { password, ...userProfile } = user.toObject();
+            return res.status(200).json({ user: userProfile });
+        } catch (error) {
+            return res.status(500).json({ message: 'Error retrieving profile', error });
         }
     }
 }

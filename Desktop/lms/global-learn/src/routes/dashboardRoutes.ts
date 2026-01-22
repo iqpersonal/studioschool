@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import DashboardController from '../controllers/dashboardController';
-import { authMiddleware } from '../middlewares/authMiddleware';
+import dashboardController from '../controllers/dashboardController';
+import authMiddleware from '../middlewares/authMiddleware';
 
 const router = Router();
-const dashboardController = new DashboardController();
 
 // Routes for retrieving dashboard data
 router.get('/student', authMiddleware, dashboardController.getStudentDashboard);
