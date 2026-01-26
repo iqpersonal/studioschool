@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../services/firebase';
 import { collection, query, where, getDocs, doc, setDoc, writeBatch, serverTimestamp, limit } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,6 +10,8 @@ import Loader from '../../components/ui/Loader';
 import Select from '../../components/ui/Select';
 import Input from '../../components/ui/Input';
 import Label from '../../components/ui/Label';
+import { exportToExcel, exportToPDF } from '../../utils/exportGrades';
+import { Download } from 'lucide-react';
 
 const AssessmentGradeEntry: React.FC = () => {
     const { currentUserData } = useAuth();
@@ -523,5 +525,7 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
+
 
 

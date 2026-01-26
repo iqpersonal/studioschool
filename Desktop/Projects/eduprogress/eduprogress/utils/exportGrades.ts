@@ -1,4 +1,4 @@
-﻿import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
@@ -14,7 +14,7 @@ export interface ExportGradesData {
 export const exportToExcel = (data: ExportGradesData) => {
     const ws = XLSX.utils.aoa_to_sheet([
         [data.title],
-        [{ v: \Grade: \ | Subject: \ | Section: \\, t: 's' }],
+        [Grade:  | Subject:  | Section: ],
         [],
         data.headers,
         ...data.rows
@@ -25,7 +25,11 @@ export const exportToExcel = (data: ExportGradesData) => {
     
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Grades');
-    XLSX.writeFile(wb, \\_\_Grades.xlsx\);
+    
+    // Generate filename
+    const subject = data.subject.replace(/\s+/g, '_');
+    const grade = data.grade.replace(/\s+/g, '_');
+    XLSX.writeFile(wb, ${subject}__Grades.xlsx);
 };
 
 export const exportToPDF = (data: ExportGradesData) => {
@@ -37,10 +41,11 @@ export const exportToPDF = (data: ExportGradesData) => {
     
     // Add metadata
     doc.setFontSize(10);
-    doc.text(\Grade: \ | Subject: \ | Section: \\, 14, 25);
+    doc.text(Grade:  | Subject:  | Section: , 14, 25);
     
     // Add date
-    doc.text(\Generated: \\, 14, 32);
+    const now = new Date().toLocaleDateString();
+    doc.text(Generated: , 14, 32);
     
     // Add table
     doc.autoTable({
@@ -61,5 +66,8 @@ export const exportToPDF = (data: ExportGradesData) => {
         },
     });
     
-    doc.save(\\_\_Grades.pdf\);
+    // Generate filename
+    const subject = data.subject.replace(/\s+/g, '_');
+    const grade = data.grade.replace(/\s+/g, '_');
+    doc.save(${subject}__Grades.pdf);
 };
