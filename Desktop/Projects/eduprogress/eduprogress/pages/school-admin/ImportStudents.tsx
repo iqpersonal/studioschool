@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { GoogleGenAI } from '@google/genai';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '../../components/ui/Card';
@@ -336,7 +336,16 @@ const ImportStudents: React.FC = () => {
                     grade: getVal('e_class_desc') || getVal('grade') || '',
                     section: getVal('e_section_name') || getVal('section') || '',
                     studentIdNumber,
-                    academicYear: getVal('academic_year'),
+                    academicYear: (() => {
+                      const ay = getVal('academic_year');
+                      if (!ay) return undefined;
+                      // Convert "2025-2026" format to "25-26"
+                      const match = ay.match(/(\d{2})(\d{2})-(\d{2})(\d{2})/);
+                      if (match) {
+                        return `${match[1]}${match[2]}-${match[3]}${match[4]}`;
+                      }
+                      return ay; // Return as-is if format doesn't match
+                    })(),
                     major: getVal('e_major_desc'),
                     group: getVal('e_group_desc'),
                     fatherName: getVal('e_father_name'),
@@ -500,3 +509,4 @@ const ImportStudents: React.FC = () => {
 };
 
 export default ImportStudents;
+

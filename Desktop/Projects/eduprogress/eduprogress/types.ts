@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+﻿import { Timestamp } from 'firebase/firestore';
 
 export interface UserProfile {
   uid: string;
@@ -173,6 +173,7 @@ export interface Group {
 export interface Grade {
   id: string;
   schoolId: string;
+  majorId?: string;`n  majorId?: string;
   name: string;
   createdAt?: Timestamp;
 }
@@ -180,6 +181,7 @@ export interface Grade {
 export interface Section {
   id: string;
   schoolId: string;
+  gradeId?: string;`n  gradeId?: string;
   name: string;
   createdAt?: Timestamp;
 }
@@ -474,3 +476,4 @@ export interface InventoryTransaction {
   notes?: string;
   performedBy: string; // Admin who performed the action
 }
+

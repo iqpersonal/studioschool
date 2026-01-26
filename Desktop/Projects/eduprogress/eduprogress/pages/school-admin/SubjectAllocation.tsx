@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../services/firebase';
-import { collection, getDocs, query, where, doc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, writeBatch, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 import {
     Major, Grade, Section, Subject, UserProfile, SubjectAllocation as SubjectAllocationType
@@ -66,10 +66,49 @@ const SubjectAllocation: React.FC = () => {
         fetchData();
     }, [schoolId]);
 
+        // Data Fix: Handle unlinked grades
+    const unlinkedGrades = useMemo(() => {
+        return grades.filter(g => !g.majorId);
+    }, [grades]);
+
+    const handleLinkGrades = async () => {
+        if (!selectedMajorId || unlinkedGrades.length === 0) return;
+        if (!confirm(`Link ${unlinkedGrades.length} unassigned grades to the selected Major?`)) return;
+
+        setSaving(true);
+        try {
+            const batch = writeBatch(db);
+            unlinkedGrades.forEach(g => {
+                const ref = doc(db, 'grades', g.id);
+                batch.update(ref, { majorId: selectedMajorId });
+            });
+            
+            await batch.commit();
+
+            // Store local update to reflect immediately
+            setGrades(prev => prev.map(g => 
+                !g.majorId ? { ...g, majorId: selectedMajorId } : g
+            ));
+
+            alert('Grades successfully linked!');
+        } catch (err) {
+            console.error('Error linking grades:', err);
+            alert('Failed to link grades.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     // Derived State
     const filteredGrades = useMemo(() => {
-        return grades; // In real app, filter by major if linked
+        if (!selectedMajorId) return [];
+        return grades.filter(g => g.majorId === selectedMajorId);
     }, [grades, selectedMajorId]);
+
+    const filteredSections = useMemo(() => {
+        if (!selectedGradeId) return [];
+        return sections.filter(s => s.gradeId === selectedGradeId);
+    }, [sections, selectedGradeId]);
 
     const currentAllocations = useMemo(() => {
         if (!selectedGradeId || !selectedSectionId) return [];
@@ -157,6 +196,18 @@ const SubjectAllocation: React.FC = () => {
                             <option value="">Select Major</option>
                             {majors.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </Select>
+                        {selectedMajorId && unlinkedGrades.length > 0 && (
+                            <div className="text-xs text-amber-600 flex items-center gap-2 mt-1 bg-amber-50 p-2 rounded border border-amber-200">
+                                <span> Found {unlinkedGrades.length} grades with no Major assigned.</span>
+                                <button 
+                                    onClick={handleLinkGrades}
+                                    className="underline font-bold text-amber-700 hover:text-amber-900"
+                                    type="button"
+                                >
+                                    Link them to {majors.find(m => m.id === selectedMajorId)?.name}
+                                </button>
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <Label>Grade</Label>
@@ -169,7 +220,7 @@ const SubjectAllocation: React.FC = () => {
                         <Label>Section</Label>
                         <Select value={selectedSectionId} onChange={e => setSelectedSectionId(e.target.value)} disabled={!selectedGradeId}>
                             <option value="">Select Section</option>
-                            {sections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            {filteredSections.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </Select>
                     </div>
                 </CardContent>
@@ -234,3 +285,8 @@ const SubjectAllocation: React.FC = () => {
 };
 
 export default SubjectAllocation;
+
+
+
+
+

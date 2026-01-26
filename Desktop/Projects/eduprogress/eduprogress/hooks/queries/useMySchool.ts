@@ -33,7 +33,6 @@ export const useMySchool = (
       }
 
       try {
-        // Fetch school data
         const schoolDoc = await getDocs(query(collection(db, "schools"), where("__name__", "==", schoolId)));
         let school: School | null = null;
         
@@ -42,45 +41,35 @@ export const useMySchool = (
           school = { id: schoolDoc.docs[0].id, ...docData } as School;
         }
 
-        // Fetch staff count (all active teachers and management)
+        // Count teachers/staff by filtering by role='teacher' (not by academicYear since staff don't have that)
         let teacherCount = 0;
-        const staffRoleSet = new Set(["teacher", "head-of-section", "subject-coordinator", "academic-director", "school-admin"]);
-        
-        const staffQuery = query(collection(db, "users"), where("schoolId", "==", schoolId));
-        const staffSnapshot = await getDocs(staffQuery);
-        
-        staffSnapshot.forEach((doc) => {
+        const teacherQuery = query(
+          collection(db, "users"),
+          where("schoolId", "==", schoolId),
+          where("role", "==", "teacher")
+        );
+        const teacherSnapshot = await getDocs(teacherQuery);
+        teacherCount = teacherSnapshot.docs.filter((doc) => {
           const user = doc.data() as UserProfile;
-          if (user.status !== "archived") {
-            const userRoles = Array.isArray(user.role) ? user.role : (user.role ? [user.role] : []);
-            if (userRoles.some((role) => role && staffRoleSet.has(role))) {
-              teacherCount++;
-            }
-          }
-        });
+          return user.status !== "archived";
+        }).length;
 
-        // Fetch student count for selected academic year
+        // Count students for selected academic year
         let studentCount = 0;
-        if (selectedAcademicYear && userRoles?.some(r => ["school-admin", "academic-director"].includes(r))) {
+        if (selectedAcademicYear) {
           const studentQuery = query(
             collection(db, "users"),
             where("schoolId", "==", schoolId),
-            where("academicYear", "==", selectedAcademicYear)
+            where("academicYear", "==", selectedAcademicYear),
+            where("role", "==", "student")
           );
           const studentSnapshot = await getDocs(studentQuery);
-          
-          studentSnapshot.forEach((doc) => {
+          studentCount = studentSnapshot.docs.filter((doc) => {
             const user = doc.data() as UserProfile;
-            if (user.status !== "archived") {
-              const userRoles = Array.isArray(user.role) ? user.role : (user.role ? [user.role] : []);
-              if (userRoles.includes("student")) {
-                studentCount++;
-              }
-            }
-          });
+            return user.status !== "archived";
+          }).length;
         }
 
-        // Fetch teacher assignments (if user is a teacher)
         let teacherAssignments: TeacherAssignment[] = [];
         if (userRoles?.includes("teacher") && teacherId) {
           const assignmentsQuery = query(
@@ -105,9 +94,9 @@ export const useMySchool = (
         throw err;
       }
     },
-    enabled: !!schoolId, // Only fetch if schoolId is available
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    enabled: !!schoolId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   return {

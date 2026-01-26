@@ -96,17 +96,19 @@ const Users: React.FC = () => {
 
         const fetchStudents = async () => {
             setStudentsFetching(true);
+            setStudentsError(false);  // Reset error state before fetching
             try {
                 const snapshot = await getDocs(
                     query(
                         collection(db, 'users'),
-                        where('schoolId', '==', currentUserData.schoolId),
-                        where('status', '!=', 'archived')
+                        where('schoolId', '==', currentUserData.schoolId)
                     )
                 );
                 const students = snapshot.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as any))
                     .filter(user => {
+                        // Filter archived users in JavaScript (avoids composite index requirement)
+                        if (user.status === 'archived') return false;
                         const roles = getRoles(user);
                         const isStudent = roles.includes('student');
                         const matchesYear = !selectedAcademicYear || user.academicYear === selectedAcademicYear;
@@ -115,6 +117,7 @@ const Users: React.FC = () => {
                     .sort((a, b) => a.name.localeCompare(b.name));
                 setAllStudents(students);
             } catch (err) {
+                console.error('Error fetching students:', err);  // Add logging for debugging
                 setStudentsError(true);
             } finally {
                 setStudentsFetching(false);
@@ -248,7 +251,9 @@ const Users: React.FC = () => {
             const snapshot = await getDocs(query(collection(db, 'users'), where('schoolId', '==', currentUserData.schoolId)));
             const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
             const students = allUsers.filter(user => {
-                const roles = getRoles(user);
+                        // Filter archived users in JavaScript (avoids composite index requirement)
+                        if (user.status === 'archived') return false;
+                        const roles = getRoles(user);
                 return roles.includes('student');
             });
             const families = new Map();
@@ -449,5 +454,8 @@ const Users: React.FC = () => {
 };
 
 export default Users;
+
+
+
 
 
