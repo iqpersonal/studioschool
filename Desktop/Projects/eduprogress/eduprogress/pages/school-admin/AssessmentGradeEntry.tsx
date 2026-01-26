@@ -356,14 +356,11 @@ const AssessmentGradeEntry: React.FC = () => {
             
             const allAssessments = structure.assessments;
             
-            // Build headers: all sub-assessments + calculated columns
-            const headers = ['Student Name', ...allAssessments.flatMap(main => 
-                main.subAssessments.map(sub => sub.name)
-            ), 'Average of Assessments', 'Term Final', 'Total Average'];
+            // Build two-row headers: main assessments with colspan, then sub-assessments
+            const mainHeaders = ['Student Name', ...allAssessments.map(main => main.name), 'Average of Assessments', 'Term Final', 'Total Average'];
+            const subHeaders = ['', ...allAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
             
-            // Find Term Final assessment (last main assessment created)
-            const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
-            
+            // Build rows with raw scores and calculated columns
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
@@ -372,16 +369,19 @@ const AssessmentGradeEntry: React.FC = () => {
                 
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
+                
+                // Find Term Final assessment (last main assessment)
+                const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
 
-                // Process all assessments and collect percentages
+                // Process all assessments
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score || '';
-                        row.push(rawScore); // Push raw score
+                        row.push(rawScore);
                         
-                        // Check if this is NOT part of Term Final assessment
+                        // Check if not Term Final
                         const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
                         if (!isTermFinal && score !== undefined && score !== null && score !== '') {
@@ -396,8 +396,7 @@ const AssessmentGradeEntry: React.FC = () => {
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinalValue = '25'; // Always 25%
-                    
+                const termFinalValue = '25';
                 const totalAvg = (avgAssessments && termFinalValue)
                     ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
@@ -415,7 +414,8 @@ const AssessmentGradeEntry: React.FC = () => {
                 subject: structure.subjectName || 'Subject',
                 section: selectedSection || 'All Sections',
                 schoolName: schoolName,
-                headers,
+                mainHeaders,
+                subHeaders,
                 rows
             });
         } catch (err) {
@@ -442,14 +442,11 @@ const AssessmentGradeEntry: React.FC = () => {
             
             const allAssessments = structure.assessments;
             
-            // Build headers: all sub-assessments + calculated columns
-            const headers = ['Student Name', ...allAssessments.flatMap(main => 
-                main.subAssessments.map(sub => sub.name)
-            ), 'Average of Assessments', 'Term Final', 'Total Average'];
+            // Build two-row headers
+            const mainHeaders = ['Student Name', ...allAssessments.map(main => main.name), 'Average of Assessments', 'Term Final', 'Total Average'];
+            const subHeaders = ['', ...allAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
             
-            // Find Term Final assessment (last main assessment created)
-            const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
-            
+            // Build rows
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
@@ -458,16 +455,16 @@ const AssessmentGradeEntry: React.FC = () => {
                 
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
+                
+                const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
 
-                // Process all assessments
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score || '';
-                        row.push(rawScore); // Push raw score
+                        row.push(rawScore);
                         
-                        // Check if this is NOT part of Term Final assessment
                         const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
                         if (!isTermFinal && score !== undefined && score !== null && score !== '') {
@@ -477,13 +474,11 @@ const AssessmentGradeEntry: React.FC = () => {
                     });
                 });
 
-                // Calculate columns
                 const avgAssessments = assessmentPercentages.length > 0 
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinalValue = '25'; // Always 25%
-                    
+                const termFinalValue = '25';
                 const totalAvg = (avgAssessments && termFinalValue)
                     ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
@@ -501,7 +496,8 @@ const AssessmentGradeEntry: React.FC = () => {
                 subject: structure.subjectName || 'Subject',
                 section: selectedSection || 'All Sections',
                 schoolName: schoolName,
-                headers,
+                mainHeaders,
+                subHeaders,
                 rows
             });
         } catch (err) {
