@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import "jspdf-autotable";
 
 export interface ExportGradesData {
     title: string;
@@ -30,7 +30,7 @@ export const exportToExcel = (data: ExportGradesData) => {
 };
 
 export const exportToPDF = (data: ExportGradesData) => {
-    const doc = new jsPDF() as any;
+    const doc = new jsPDF();
     const metadata = `Grade: ${data.grade} | Subject: ${data.subject} | Section: ${data.section}`;
     const dateStr = new Date().toLocaleDateString();
     
