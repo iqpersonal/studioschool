@@ -361,10 +361,8 @@ const AssessmentGradeEntry: React.FC = () => {
                 main.subAssessments.map(sub => sub.name)
             ), 'Average of Assessments', 'Term Final', 'Total Average'];
             
-            // Find Term Final assessment (main assessment with name containing "Term Final")
-            const termFinalAssessment = allAssessments.find(main => 
-                main.name.toLowerCase().includes('term final') || main.name.toLowerCase().includes('final')
-            );
+            // Find Term Final assessment (last main assessment created)
+            const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
@@ -374,7 +372,6 @@ const AssessmentGradeEntry: React.FC = () => {
                 
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
-                let termFinalPercentage: number | null = null;
 
                 // Process all assessments and collect percentages
                 allAssessments.forEach(main => {
@@ -384,19 +381,12 @@ const AssessmentGradeEntry: React.FC = () => {
                         const rawScore = score || '';
                         row.push(rawScore); // Push raw score
                         
-                        // Check if this is part of Term Final assessment
+                        // Check if this is NOT part of Term Final assessment
                         const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
-                        if (score !== undefined && score !== null && score !== '') {
+                        if (!isTermFinal && score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
-                            
-                            if (isTermFinal) {
-                                // Store Term Final percentage (use the last one if multiple)
-                                termFinalPercentage = percentage;
-                            } else {
-                                // Store other assessment percentages for averaging
-                                assessmentPercentages.push(percentage);
-                            }
+                            assessmentPercentages.push(percentage);
                         }
                     });
                 });
@@ -406,16 +396,14 @@ const AssessmentGradeEntry: React.FC = () => {
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinal = termFinalPercentage !== null 
-                    ? termFinalPercentage.toFixed(2)
-                    : '';
+                const termFinalValue = '25'; // Always 25%
                     
-                const totalAvg = (avgAssessments && termFinal)
-                    ? (parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))).toFixed(2)
+                const totalAvg = (avgAssessments && termFinalValue)
+                    ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
 
                 row.push(avgAssessments || '');
-                row.push(termFinal || '');
+                row.push(termFinalValue);
                 row.push(totalAvg || '');
 
                 return row;
@@ -459,10 +447,8 @@ const AssessmentGradeEntry: React.FC = () => {
                 main.subAssessments.map(sub => sub.name)
             ), 'Average of Assessments', 'Term Final', 'Total Average'];
             
-            // Find Term Final assessment
-            const termFinalAssessment = allAssessments.find(main => 
-                main.name.toLowerCase().includes('term final') || main.name.toLowerCase().includes('final')
-            );
+            // Find Term Final assessment (last main assessment created)
+            const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
@@ -472,7 +458,6 @@ const AssessmentGradeEntry: React.FC = () => {
                 
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
-                let termFinalPercentage: number | null = null;
 
                 // Process all assessments
                 allAssessments.forEach(main => {
@@ -482,17 +467,12 @@ const AssessmentGradeEntry: React.FC = () => {
                         const rawScore = score || '';
                         row.push(rawScore); // Push raw score
                         
-                        // Check if this is part of Term Final assessment
+                        // Check if this is NOT part of Term Final assessment
                         const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
-                        if (score !== undefined && score !== null && score !== '') {
+                        if (!isTermFinal && score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
-                            
-                            if (isTermFinal) {
-                                termFinalPercentage = percentage;
-                            } else {
-                                assessmentPercentages.push(percentage);
-                            }
+                            assessmentPercentages.push(percentage);
                         }
                     });
                 });
@@ -502,16 +482,14 @@ const AssessmentGradeEntry: React.FC = () => {
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinal = termFinalPercentage !== null 
-                    ? termFinalPercentage.toFixed(2)
-                    : '';
+                const termFinalValue = '25'; // Always 25%
                     
-                const totalAvg = (avgAssessments && termFinal)
-                    ? (parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))).toFixed(2)
+                const totalAvg = (avgAssessments && termFinalValue)
+                    ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
 
                 row.push(avgAssessments || '');
-                row.push(termFinal || '');
+                row.push(termFinalValue);
                 row.push(totalAvg || '');
 
                 return row;
