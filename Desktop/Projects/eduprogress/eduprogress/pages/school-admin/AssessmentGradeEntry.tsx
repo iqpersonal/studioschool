@@ -355,9 +355,10 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
-            const headers = ['Student Name', ...allAssessments.flatMap(main => 
+            const assessmentHeaders = allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
-            )];
+            );
+            const headers = ['Student Name', ...assessmentHeaders, 'Average of Assessments', 'Term Final', 'Total Average'];
             
             const rows = students.map(student => {
                 // Full student name: first name + father name + family name
@@ -367,13 +368,33 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row = [fullName];
+                const scores: number[] = [];
+                
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
-                        const score = grade?.scores?.[main.id]?.[sub.id] || '';
-                        row.push(score);
+                        const score = grade?.scores?.[main.id]?.[sub.id];
+                        row.push(score || '');
+                        if (score !== undefined && score !== null && score !== '') {
+                            scores.push(Number(score));
+                        }
                     });
                 });
+                
+                // Average of Assessments
+                const avgAssessments = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : '';
+                row.push(avgAssessments);
+                
+                // Term Final (last score)
+                const termFinal = scores.length > 0 ? scores[scores.length - 1].toFixed(2) : '';
+                row.push(termFinal);
+                
+                // Total Average (average of avgAssessments and termFinal)
+                const totalAvg = (avgAssessments && termFinal) 
+                    ? ((parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))) / 2).toFixed(2) 
+                    : '';
+                row.push(totalAvg);
+                
                 return row;
             });
             
@@ -409,9 +430,10 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
-            const headers = ['Student Name', ...allAssessments.flatMap(main => 
+            const assessmentHeaders = allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
-            )];
+            );
+            const headers = [...assessmentHeaders, 'Average of Assessments', 'Term Final', 'Total Average'];
             
             // Build main assessments structure for PDF header
             const mainAssessments = allAssessments.map(main => ({
@@ -428,13 +450,33 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row = [fullName];
+                const scores: number[] = [];
+                
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
-                        const score = grade?.scores?.[main.id]?.[sub.id] || '';
-                        row.push(score);
+                        const score = grade?.scores?.[main.id]?.[sub.id];
+                        row.push(score || '');
+                        if (score !== undefined && score !== null && score !== '') {
+                            scores.push(Number(score));
+                        }
                     });
                 });
+                
+                // Average of Assessments
+                const avgAssessments = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : '';
+                row.push(avgAssessments);
+                
+                // Term Final (last score)
+                const termFinal = scores.length > 0 ? scores[scores.length - 1].toFixed(2) : '';
+                row.push(termFinal);
+                
+                // Total Average (average of avgAssessments and termFinal)
+                const totalAvg = (avgAssessments && termFinal) 
+                    ? ((parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))) / 2).toFixed(2) 
+                    : '';
+                row.push(totalAvg);
+                
                 return row;
             });
             
