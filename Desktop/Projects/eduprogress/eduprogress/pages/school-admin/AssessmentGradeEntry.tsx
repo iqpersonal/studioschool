@@ -20,25 +20,30 @@ const AssessmentGradeEntry: React.FC = () => {
     const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
     const [showMyClassesOnly, setShowMyClassesOnly] = useState(false);
 
+    // Determine if user has teacher role
     const isTeacherRole = useMemo(() => {
         const roles = Array.isArray(currentUserData?.role) ? currentUserData.role : (currentUserData?.role ? [currentUserData.role] : []);
         return roles.includes('teacher');
     }, [currentUserData]);
 
+    // Initialize showMyClassesOnly based on role
     useEffect(() => {
         if (isTeacherRole) {
             setShowMyClassesOnly(true);
         }
     }, [isTeacherRole]);
 
+    // Cascaded Filter States
     const [selectedMajor, setSelectedMajor] = useState('');
     const [selectedGrade, setSelectedGrade] = useState('');
     const [selectedSection, setSelectedSection] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
 
+    // Hierarchy Data
     const [hierarchy, setHierarchy] = useState<{ [major: string]: { [grade: string]: Set<string> } }>({});
     const [isHierarchyLoaded, setIsHierarchyLoaded] = useState(false);
 
+    // Assessment Filter States
     const [selectedMainAssessmentId, setSelectedMainAssessmentId] = useState('');
     const [selectedSubAssessmentId, setSelectedSubAssessmentId] = useState('');
 
@@ -50,6 +55,7 @@ const AssessmentGradeEntry: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Fetch teacher assignments
     useEffect(() => {
         if (!currentUserData?.schoolId) return;
 
@@ -68,6 +74,7 @@ const AssessmentGradeEntry: React.FC = () => {
         });
     }, [currentUserData]);
 
+    // Fetch all students to build Major -> Grade -> Section hierarchy
     useEffect(() => {
         if (!currentUserData?.schoolId || !selectedAcademicYear) return;
 
@@ -104,6 +111,7 @@ const AssessmentGradeEntry: React.FC = () => {
         fetchHierarchy();
     }, [currentUserData?.schoolId, selectedAcademicYear]);
 
+    // Filter assignments based on "My Classes Only" toggle
     const filteredAssignments = useMemo(() => {
         if (showMyClassesOnly && currentUserData?.uid) {
             return assignments.filter(a => a.teacherId === currentUserData.uid);
@@ -111,6 +119,7 @@ const AssessmentGradeEntry: React.FC = () => {
         return assignments;
     }, [assignments, showMyClassesOnly, currentUserData?.uid]);
 
+    // Derived Options for Filters
     const majorOptions = useMemo(() => {
         if (!isHierarchyLoaded) return [];
         let majors = Object.keys(hierarchy);
@@ -346,9 +355,16 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
+            
+            // Build headers: all sub-assessments + calculated columns
             const headers = ['Student Name', ...allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
             ), 'Average of Assessments', 'Term Final', 'Total Average'];
+            
+            // Find Term Final assessment (main assessment with name containing "Term Final")
+            const termFinalAssessment = allAssessments.find(main => 
+                main.name.toLowerCase().includes('term final') || main.name.toLowerCase().includes('final')
+            );
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
@@ -357,28 +373,41 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const scores: number[] = [];
+                const assessmentPercentages: number[] = [];
+                let termFinalPercentage: number | null = null;
 
+                // Process all assessments and collect percentages
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score || '';
-                        row.push(rawScore);
+                        row.push(rawScore); // Push raw score
+                        
+                        // Check if this is part of Term Final assessment
+                        const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
                         if (score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
-                            scores.push(percentage);
+                            
+                            if (isTermFinal) {
+                                // Store Term Final percentage (use the last one if multiple)
+                                termFinalPercentage = percentage;
+                            } else {
+                                // Store other assessment percentages for averaging
+                                assessmentPercentages.push(percentage);
+                            }
                         }
                     });
                 });
 
-                const avgAssessments = scores.length > 0 
-                    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
+                // Calculate columns
+                const avgAssessments = assessmentPercentages.length > 0 
+                    ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinal = scores.length > 0 
-                    ? scores[scores.length - 1].toFixed(2)
+                const termFinal = termFinalPercentage !== null 
+                    ? termFinalPercentage.toFixed(2)
                     : '';
                     
                 const totalAvg = (avgAssessments && termFinal)
@@ -424,9 +453,16 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
+            
+            // Build headers: all sub-assessments + calculated columns
             const headers = ['Student Name', ...allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
             ), 'Average of Assessments', 'Term Final', 'Total Average'];
+            
+            // Find Term Final assessment
+            const termFinalAssessment = allAssessments.find(main => 
+                main.name.toLowerCase().includes('term final') || main.name.toLowerCase().includes('final')
+            );
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
@@ -435,28 +471,39 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const scores: number[] = [];
+                const assessmentPercentages: number[] = [];
+                let termFinalPercentage: number | null = null;
 
+                // Process all assessments
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score || '';
-                        row.push(rawScore);
+                        row.push(rawScore); // Push raw score
+                        
+                        // Check if this is part of Term Final assessment
+                        const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
                         
                         if (score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
-                            scores.push(percentage);
+                            
+                            if (isTermFinal) {
+                                termFinalPercentage = percentage;
+                            } else {
+                                assessmentPercentages.push(percentage);
+                            }
                         }
                     });
                 });
 
-                const avgAssessments = scores.length > 0 
-                    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
+                // Calculate columns
+                const avgAssessments = assessmentPercentages.length > 0 
+                    ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
                     
-                const termFinal = scores.length > 0 
-                    ? scores[scores.length - 1].toFixed(2)
+                const termFinal = termFinalPercentage !== null 
+                    ? termFinalPercentage.toFixed(2)
                     : '';
                     
                 const totalAvg = (avgAssessments && termFinal)
