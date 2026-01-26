@@ -365,6 +365,71 @@ const AssessmentGradeEntry: React.FC = () => {
         }
     };
 
+    const handleExportExcel = () => {
+        if (!structure || !students || students.length === 0) {
+            alert('No data to export');
+            return;
+        }
+        
+        const allAssessments = structure.assessments;
+        const headers = ['Student Name', ...allAssessments.flatMap(main => 
+            main.subAssessments.map(sub => sub.name)
+        )];
+        
+        const rows = students.map(student => {
+            const row = [student.name || ''];
+            allAssessments.forEach(main => {
+                main.subAssessments.forEach(sub => {
+                    const grade = grades[student.uid];
+                    const score = grade?.assessmentGrades?.[main.id]?.[sub.id] || '';
+                    row.push(score);
+                });
+            });
+            return row;
+        });
+        
+        exportToExcel({
+            title: `Assessment Grades - ${structure.subjectName}`,
+            grade: selectedGrade?.label || 'Grade',
+            subject: structure.subjectName || 'Subject',
+            section: selectedSection?.label || 'All Sections',
+            headers,
+            rows
+        });
+    };
+
+    const handleExportPDF = () => {
+        if (!structure || !students || students.length === 0) {
+            alert('No data to export');
+            return;
+        }
+        
+        const allAssessments = structure.assessments;
+        const headers = ['Student Name', ...allAssessments.flatMap(main => 
+            main.subAssessments.map(sub => sub.name)
+        )];
+        
+        const rows = students.map(student => {
+            const row = [student.name || ''];
+            allAssessments.forEach(main => {
+                main.subAssessments.forEach(sub => {
+                    const grade = grades[student.uid];
+                    const score = grade?.assessmentGrades?.[main.id]?.[sub.id] || '';
+                    row.push(score);
+                });
+            });
+            return row;
+        });
+        
+        exportToPDF({
+            title: `Assessment Grades - ${structure.subjectName}`,
+            grade: selectedGrade?.label || 'Grade',
+            subject: structure.subjectName || 'Subject',
+            section: selectedSection?.label || 'All Sections',
+            headers,
+            rows
+        });
+    };
     // Filter structure for display based on selected assessment filters
     const filteredAssessments = useMemo(() => {
         if (!structure) return [];
@@ -463,9 +528,17 @@ const AssessmentGradeEntry: React.FC = () => {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>{structure.subjectName} - Grade Entry</CardTitle>
-                        <Button onClick={handleSave} disabled={saving}>
+                        <div className="flex gap-2">
+                            <Button onClick={handleSave} disabled={saving}>
                             {saving ? 'Saving...' : 'Save Grades'}
-                        </Button>
+                            </Button>
+                            <Button variant="outline" className="flex items-center gap-2" onClick={handleExportExcel}>
+                                <Download size={16} /> Excel
+                            </Button>
+                            <Button variant="outline" className="flex items-center gap-2" onClick={handleExportPDF}>
+                                <Download size={16} /> PDF
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent className="overflow-x-auto">
                         <table className="w-full border-collapse text-sm">
@@ -525,6 +598,9 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
+
+
 
 
 
