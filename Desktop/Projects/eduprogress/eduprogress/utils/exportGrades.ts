@@ -1,6 +1,6 @@
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export interface ExportGradesData {
     title: string;
@@ -12,62 +12,45 @@ export interface ExportGradesData {
 }
 
 export const exportToExcel = (data: ExportGradesData) => {
+    const metadata = `Grade: ${data.grade} | Subject: ${data.subject} | Section: ${data.section}`;
     const ws = XLSX.utils.aoa_to_sheet([
         [data.title],
-        [Grade:  | Subject:  | Section: ],
+        [metadata],
         [],
         data.headers,
         ...data.rows
     ]);
     
-    // Set column widths
-    ws['!cols'] = Array(data.headers.length).fill({ wch: 15 });
-    
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Grades');
+    XLSX.utils.book_append_sheet(wb, ws, "Grades");
     
-    // Generate filename
-    const subject = data.subject.replace(/\s+/g, '_');
-    const grade = data.grade.replace(/\s+/g, '_');
-    XLSX.writeFile(wb, ${subject}__Grades.xlsx);
+    const subject = data.subject.replace(/\s+/g, "_");
+    const grade = data.grade.replace(/\s+/g, "_");
+    XLSX.writeFile(wb, `${subject}_${grade}_Grades.xlsx`);
 };
 
 export const exportToPDF = (data: ExportGradesData) => {
     const doc = new jsPDF() as any;
+    const metadata = `Grade: ${data.grade} | Subject: ${data.subject} | Section: ${data.section}`;
+    const dateStr = new Date().toLocaleDateString();
     
-    // Add title
     doc.setFontSize(16);
     doc.text(data.title, 14, 15);
     
-    // Add metadata
     doc.setFontSize(10);
-    doc.text(Grade:  | Subject:  | Section: , 14, 25);
+    doc.text(metadata, 14, 25);
+    doc.text(`Generated: ${dateStr}`, 14, 32);
     
-    // Add date
-    const now = new Date().toLocaleDateString();
-    doc.text(Generated: , 14, 32);
-    
-    // Add table
-    doc.autoTable({
+    (doc as any).autoTable({
         head: [data.headers],
         body: data.rows.map(row => row.map(cell => String(cell))),
         startY: 40,
-        styles: {
-            fontSize: 9,
-            cellPadding: 3,
-        },
-        headStyles: {
-            fillColor: [41, 128, 185],
-            textColor: 255,
-            fontStyle: 'bold',
-        },
-        alternateRowStyles: {
-            fillColor: [240, 240, 240],
-        },
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [240, 240, 240] },
     });
     
-    // Generate filename
-    const subject = data.subject.replace(/\s+/g, '_');
-    const grade = data.grade.replace(/\s+/g, '_');
-    doc.save(${subject}__Grades.pdf);
+    const subject = data.subject.replace(/\s+/g, "_");
+    const grade = data.grade.replace(/\s+/g, "_");
+    doc.save(`${subject}_${grade}_Grades.pdf`);
 };
