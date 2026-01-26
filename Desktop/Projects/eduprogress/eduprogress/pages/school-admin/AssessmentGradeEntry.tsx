@@ -20,30 +20,25 @@ const AssessmentGradeEntry: React.FC = () => {
     const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
     const [showMyClassesOnly, setShowMyClassesOnly] = useState(false);
 
-    // Determine if user has teacher role
     const isTeacherRole = useMemo(() => {
         const roles = Array.isArray(currentUserData?.role) ? currentUserData.role : (currentUserData?.role ? [currentUserData.role] : []);
         return roles.includes('teacher');
     }, [currentUserData]);
 
-    // Initialize showMyClassesOnly based on role
     useEffect(() => {
         if (isTeacherRole) {
             setShowMyClassesOnly(true);
         }
     }, [isTeacherRole]);
 
-    // Cascaded Filter States
     const [selectedMajor, setSelectedMajor] = useState('');
     const [selectedGrade, setSelectedGrade] = useState('');
     const [selectedSection, setSelectedSection] = useState('');
     const [selectedSubjectId, setSelectedSubjectId] = useState('');
 
-    // Hierarchy Data
     const [hierarchy, setHierarchy] = useState<{ [major: string]: { [grade: string]: Set<string> } }>({});
     const [isHierarchyLoaded, setIsHierarchyLoaded] = useState(false);
 
-    // Assessment Filter States
     const [selectedMainAssessmentId, setSelectedMainAssessmentId] = useState('');
     const [selectedSubAssessmentId, setSelectedSubAssessmentId] = useState('');
 
@@ -55,7 +50,6 @@ const AssessmentGradeEntry: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch teacher assignments
     useEffect(() => {
         if (!currentUserData?.schoolId) return;
 
@@ -74,7 +68,6 @@ const AssessmentGradeEntry: React.FC = () => {
         });
     }, [currentUserData]);
 
-    // Fetch all students to build Major -> Grade -> Section hierarchy
     useEffect(() => {
         if (!currentUserData?.schoolId || !selectedAcademicYear) return;
 
@@ -111,7 +104,6 @@ const AssessmentGradeEntry: React.FC = () => {
         fetchHierarchy();
     }, [currentUserData?.schoolId, selectedAcademicYear]);
 
-    // Filter assignments based on "My Classes Only" toggle
     const filteredAssignments = useMemo(() => {
         if (showMyClassesOnly && currentUserData?.uid) {
             return assignments.filter(a => a.teacherId === currentUserData.uid);
@@ -119,7 +111,6 @@ const AssessmentGradeEntry: React.FC = () => {
         return assignments;
     }, [assignments, showMyClassesOnly, currentUserData?.uid]);
 
-    // Derived Options for Filters
     const majorOptions = useMemo(() => {
         if (!isHierarchyLoaded) return [];
         let majors = Object.keys(hierarchy);
@@ -355,46 +346,49 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
-            const assessmentHeaders = allAssessments.flatMap(main => 
+            const headers = ['Student Name', ...allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
-            );
-            const headers = ['Student Name', ...assessmentHeaders, 'Average of Assessments', 'Term Final', 'Total Average'];
+            ), 'Average of Assessments', 'Term Final', 'Total Average'];
             
             const rows = students.map(student => {
-                // Full student name: first name + father name + family name
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
                     .join(' ')
                     .trim() || 'N/A';
                 
-                const row = [fullName];
+                const row: (string | number)[] = [fullName];
                 const scores: number[] = [];
-                
+
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
-                        row.push(score || '');
+                        const rawScore = score || '';
+                        row.push(rawScore);
+                        
                         if (score !== undefined && score !== null && score !== '') {
-                            scores.push(Number(score));
+                            const percentage = (Number(score) / sub.maxScore) * 100;
+                            scores.push(percentage);
                         }
                     });
                 });
-                
-                // Average of Assessments
-                const avgAssessments = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : '';
-                row.push(avgAssessments);
-                
-                // Term Final (last score)
-                const termFinal = scores.length > 0 ? scores[scores.length - 1].toFixed(2) : '';
-                row.push(termFinal);
-                
-                // Total Average (average of avgAssessments and termFinal)
-                const totalAvg = (avgAssessments && termFinal) 
-                    ? ((parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))) / 2).toFixed(2) 
+
+                const avgAssessments = scores.length > 0 
+                    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
                     : '';
-                row.push(totalAvg);
-                
+                    
+                const termFinal = scores.length > 0 
+                    ? scores[scores.length - 1].toFixed(2)
+                    : '';
+                    
+                const totalAvg = (avgAssessments && termFinal)
+                    ? (parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))).toFixed(2)
+                    : '';
+
+                row.push(avgAssessments || '');
+                row.push(termFinal || '');
+                row.push(totalAvg || '');
+
                 return row;
             });
             
@@ -430,53 +424,49 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
             
             const allAssessments = structure.assessments;
-            const assessmentHeaders = allAssessments.flatMap(main => 
+            const headers = ['Student Name', ...allAssessments.flatMap(main => 
                 main.subAssessments.map(sub => sub.name)
-            );
-            const headers = [...assessmentHeaders, 'Average of Assessments', 'Term Final', 'Total Average'];
-            
-            // Build main assessments structure for PDF header
-            const mainAssessments = allAssessments.map(main => ({
-                name: main.name,
-                weightage: main.weightage,
-                subCount: main.subAssessments.length
-            }));
+            ), 'Average of Assessments', 'Term Final', 'Total Average'];
             
             const rows = students.map(student => {
-                // Full student name: first name + father name + family name
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
                     .join(' ')
                     .trim() || 'N/A';
                 
-                const row = [fullName];
+                const row: (string | number)[] = [fullName];
                 const scores: number[] = [];
-                
+
                 allAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
-                        row.push(score || '');
+                        const rawScore = score || '';
+                        row.push(rawScore);
+                        
                         if (score !== undefined && score !== null && score !== '') {
-                            scores.push(Number(score));
+                            const percentage = (Number(score) / sub.maxScore) * 100;
+                            scores.push(percentage);
                         }
                     });
                 });
-                
-                // Average of Assessments
-                const avgAssessments = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) : '';
-                row.push(avgAssessments);
-                
-                // Term Final (last score)
-                const termFinal = scores.length > 0 ? scores[scores.length - 1].toFixed(2) : '';
-                row.push(termFinal);
-                
-                // Total Average (average of avgAssessments and termFinal)
-                const totalAvg = (avgAssessments && termFinal) 
-                    ? ((parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))) / 2).toFixed(2) 
+
+                const avgAssessments = scores.length > 0 
+                    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)
                     : '';
-                row.push(totalAvg);
-                
+                    
+                const termFinal = scores.length > 0 
+                    ? scores[scores.length - 1].toFixed(2)
+                    : '';
+                    
+                const totalAvg = (avgAssessments && termFinal)
+                    ? (parseFloat(String(avgAssessments)) + parseFloat(String(termFinal))).toFixed(2)
+                    : '';
+
+                row.push(avgAssessments || '');
+                row.push(termFinal || '');
+                row.push(totalAvg || '');
+
                 return row;
             });
             
@@ -487,9 +477,7 @@ const AssessmentGradeEntry: React.FC = () => {
                 section: selectedSection || 'All Sections',
                 schoolName: schoolName,
                 headers,
-                rows,
-                mainAssessments,
-                assessmentStructure: structure
+                rows
             });
         } catch (err) {
             console.error('Export error:', err);
@@ -655,10 +643,10 @@ const AssessmentGradeEntry: React.FC = () => {
                                 ))}
                             </tbody>
                         </table>
-                    </CardContent>
-                </Card>
+                    </CardContent >
+                </Card >
             )}
-        </div>
+        </div >
     );
 };
 
