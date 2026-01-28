@@ -36,10 +36,16 @@ export const exportToExcel = (data: ExportGradesData) => {
         }
     }
 
-    // Set column widths
-    ws["!cols"] = Array(range.e.c + 1).fill(null).map((_, idx) => ({
-        wch: idx === 0 ? 25 : 12
-    }));
+    // Set column widths - dynamic based on header length
+    ws["!cols"] = data.mainHeaders.map((header, idx) => {
+        if (idx === 0) {
+            return { wch: 22 }; // Student Name
+        }
+        // Calculate width based on header length (min 12, max 20)
+        const headerLen = String(header).length;
+        const width = Math.max(12, Math.min(headerLen + 2, 20));
+        return { wch: width };
+    });
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Grades");
@@ -58,25 +64,25 @@ export const exportToPDF = (data: ExportGradesData) => {
 
     const pageHeight = doc.internal.pageSize.getHeight();
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 12;
-    let yPosition = 15;
+    const margin = 10;
+    let yPosition = 12;
 
     // School Header
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(41, 128, 185);
     doc.text(data.schoolName, pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 8;
+    yPosition += 7;
 
     // Title
-    doc.setFontSize(14);
+    doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
     doc.text("Assessment Grades Report", pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 8;
+    yPosition += 7;
 
     // Metadata
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(60, 60, 60);
     const gradeLine = `Grade: ${data.grade}`;
@@ -84,59 +90,89 @@ export const exportToPDF = (data: ExportGradesData) => {
     const dateLine = `Generated: ${new Date().toLocaleDateString()}`;
 
     doc.text(gradeLine, margin, yPosition);
-    doc.text(subjectLine, pageWidth / 2 - 20, yPosition);
-    doc.text(dateLine, pageWidth - margin - 50, yPosition);
-    yPosition += 10;
+    doc.text(subjectLine, pageWidth / 2 - 15, yPosition);
+    doc.text(dateLine, pageWidth - margin - 40, yPosition);
+    yPosition += 8;
 
-    // Calculate column widths
-    const numCols = data.mainHeaders.length;
-    const colWidth = (pageWidth - 2 * margin) / numCols;
-    const rowHeight = 7;
-    const mainHeaderHeight = 8;
-    const subHeaderHeight = 6;
+    // Calculate dynamic column widths based on header lengths
+    const studentNameWidth = 20;
+    const totalWidth = pageWidth - 2 * margin;
+    
+    // Calculate width for each column based on header text length
+    const columnWidths: number[] = [];
+    columnWidths.push(studentNameWidth); // First column for student name
+    
+    for (let i = 1; i < data.mainHeaders.length; i++) {
+        const mainHeader = String(data.mainHeaders[i]);
+        const subHeader = String(data.subHeaders[i]);
+        // Use longer of main or sub header
+        const headerText = mainHeader.length > subHeader.length ? mainHeader : subHeader;
+        // Minimum 10mm, maximum 25mm, base on text length
+        const calculatedWidth = Math.max(10, Math.min(headerText.length * 1.2, 25));
+        columnWidths.push(calculatedWidth);
+    }
+    
+    // Normalize widths to fit page
+    const totalCalculatedWidth = columnWidths.reduce((a, b) => a + b, 0);
+    const scaleFactor = (totalWidth - studentNameWidth) / (totalCalculatedWidth - studentNameWidth);
+    const scaledWidths = columnWidths.map((w, i) => i === 0 ? w : w * scaleFactor);
+    
+    const rowHeight = 6;
+    const mainHeaderHeight = 7;
+    const subHeaderHeight = 5.5;
 
-    // Main Headers Row
-    doc.setFillColor(41, 128, 185);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
+    // Helper function to draw headers
+    const drawHeaders = () => {
+        // Main Headers Row
+        doc.setFillColor(41, 128, 185);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
 
-    data.mainHeaders.forEach((header, colIndex) => {
-        const xPos = margin + colIndex * colWidth;
-        doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
-        doc.text(
-            String(header),
-            xPos + colWidth / 2,
-            yPosition + 4,
-            { align: "center", maxWidth: colWidth - 2 }
-        );
-    });
-    yPosition += mainHeaderHeight;
-
-    // Sub Headers Row
-    doc.setFillColor(100, 160, 220);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-
-    data.subHeaders.forEach((header, colIndex) => {
-        const xPos = margin + colIndex * colWidth;
-        doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
-        if (header) {
+        let xPos = margin;
+        data.mainHeaders.forEach((header, colIndex) => {
+            const colWidth = scaledWidths[colIndex];
+            doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
             doc.text(
                 String(header),
                 xPos + colWidth / 2,
-                yPosition + 3,
-                { align: "center", maxWidth: colWidth - 2 }
+                yPosition + 3.5,
+                { align: "center", maxWidth: colWidth - 1 }
             );
-        }
-    });
-    yPosition += subHeaderHeight;
+            xPos += colWidth;
+        });
+        yPosition += mainHeaderHeight;
+
+        // Sub Headers Row
+        doc.setFillColor(100, 160, 220);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+
+        xPos = margin;
+        data.subHeaders.forEach((header, colIndex) => {
+            const colWidth = scaledWidths[colIndex];
+            doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
+            if (header) {
+                doc.text(
+                    String(header),
+                    xPos + colWidth / 2,
+                    yPosition + 2.8,
+                    { align: "center", maxWidth: colWidth - 1 }
+                );
+            }
+            xPos += colWidth;
+        });
+        yPosition += subHeaderHeight;
+    };
+
+    // Initial headers
+    drawHeaders();
 
     // Data Rows
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     let rowIndex = 0;
 
     data.rows.forEach((row, dataRowIndex) => {
@@ -144,73 +180,39 @@ export const exportToPDF = (data: ExportGradesData) => {
         if (yPosition + rowHeight > pageHeight - margin) {
             doc.addPage();
             yPosition = margin;
-
-            // Repeat headers on new page
-            doc.setFillColor(41, 128, 185);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(9);
-
-            data.mainHeaders.forEach((header, colIndex) => {
-                const xPos = margin + colIndex * colWidth;
-                doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
-                doc.text(
-                    String(header),
-                    xPos + colWidth / 2,
-                    yPosition + 4,
-                    { align: "center", maxWidth: colWidth - 2 }
-                );
-            });
-            yPosition += mainHeaderHeight;
-
-            doc.setFillColor(100, 160, 220);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(8);
-
-            data.subHeaders.forEach((header, colIndex) => {
-                const xPos = margin + colIndex * colWidth;
-                doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
-                if (header) {
-                    doc.text(
-                        String(header),
-                        xPos + colWidth / 2,
-                        yPosition + 3,
-                        { align: "center", maxWidth: colWidth - 2 }
-                    );
-                }
-            });
-            yPosition += subHeaderHeight;
-
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(8);
+            drawHeaders();
         }
 
         // Alternate row colors
         if (rowIndex % 2 === 0) {
             doc.setFillColor(240, 245, 250);
-            doc.rect(margin, yPosition, pageWidth - 2 * margin, rowHeight, "F");
+            let xPos = margin;
+            for (let i = 0; i < scaledWidths.length; i++) {
+                doc.rect(xPos, yPosition, scaledWidths[i], rowHeight, "F");
+                xPos += scaledWidths[i];
+            }
         }
 
         // Draw row borders and content
         doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.3);
+        doc.setLineWidth(0.2);
 
+        let xPos = margin;
         row.forEach((cell, colIndex) => {
-            const xPos = margin + colIndex * colWidth;
+            const colWidth = scaledWidths[colIndex];
             doc.rect(xPos, yPosition, colWidth, rowHeight);
 
             // Left-align first column (student names), center-align others
             const alignType = colIndex === 0 ? "left" : "center";
-            const textX = alignType === "left" ? xPos + 1 : xPos + colWidth / 2;
+            const textX = alignType === "left" ? xPos + 0.5 : xPos + colWidth / 2;
             
             doc.text(
                 String(cell),
                 textX,
-                yPosition + 4,
-                { align: alignType, maxWidth: colWidth - 2 }
+                yPosition + 3.5,
+                { align: alignType, maxWidth: colWidth - 1 }
             );
+            xPos += colWidth;
         });
 
         yPosition += rowHeight;
