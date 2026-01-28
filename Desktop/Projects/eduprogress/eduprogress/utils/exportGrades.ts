@@ -56,170 +56,189 @@ export const exportToExcel = (data: ExportGradesData) => {
 };
 
 export const exportToPDF = (data: ExportGradesData) => {
-    const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "mm",
-        format: "a4"
-    });
-
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 10;
-    let yPosition = 12;
-
-    // School Header
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(41, 128, 185);
-    doc.text(data.schoolName, pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 7;
-
-    // Title
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("Assessment Grades Report", pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 7;
-
-    // Metadata
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(60, 60, 60);
-    const gradeLine = `Grade: ${data.grade}`;
-    const subjectLine = `Subject: ${data.subject}`;
-    const dateLine = `Generated: ${new Date().toLocaleDateString()}`;
-
-    doc.text(gradeLine, margin, yPosition);
-    doc.text(subjectLine, pageWidth / 2 - 15, yPosition);
-    doc.text(dateLine, pageWidth - margin - 40, yPosition);
-    yPosition += 8;
-
-    // Calculate dynamic column widths based on header lengths
-    const studentNameWidth = 20;
-    const totalWidth = pageWidth - 2 * margin;
-    
-    // Calculate width for each column based on header text length
-    const columnWidths: number[] = [];
-    columnWidths.push(studentNameWidth); // First column for student name
-    
-    for (let i = 1; i < data.mainHeaders.length; i++) {
-        const mainHeader = String(data.mainHeaders[i]);
-        const subHeader = String(data.subHeaders[i]);
-        // Use longer of main or sub header
-        const headerText = mainHeader.length > subHeader.length ? mainHeader : subHeader;
-        // Minimum 10mm, maximum 25mm, base on text length
-        const calculatedWidth = Math.max(10, Math.min(headerText.length * 1.2, 25));
-        columnWidths.push(calculatedWidth);
-    }
-    
-    // Normalize widths to fit page
-    const totalCalculatedWidth = columnWidths.reduce((a, b) => a + b, 0);
-    const scaleFactor = (totalWidth - studentNameWidth) / (totalCalculatedWidth - studentNameWidth);
-    const scaledWidths = columnWidths.map((w, i) => i === 0 ? w : w * scaleFactor);
-    
-    const rowHeight = 6;
-    const mainHeaderHeight = 7;
-    const subHeaderHeight = 5.5;
-
-    // Helper function to draw headers
-    const drawHeaders = () => {
-        // Main Headers Row
-        doc.setFillColor(41, 128, 185);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(8);
-
-        let xPos = margin;
-        data.mainHeaders.forEach((header, colIndex) => {
-            const colWidth = scaledWidths[colIndex];
-            doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
-            doc.text(
-                String(header),
-                xPos + colWidth / 2,
-                yPosition + 3.5,
-                { align: "center", maxWidth: colWidth - 1 }
-            );
-            xPos += colWidth;
+    try {
+        const doc = new jsPDF({
+            orientation: "landscape",
+            unit: "mm",
+            format: "a4"
         });
-        yPosition += mainHeaderHeight;
 
-        // Sub Headers Row
-        doc.setFillColor(100, 160, 220);
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 10;
+        let yPosition = 12;
+
+        // School Header
+        doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(7);
+        doc.setTextColor(41, 128, 185);
+        doc.text(data.schoolName || "School", pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 7;
 
-        xPos = margin;
-        data.subHeaders.forEach((header, colIndex) => {
-            const colWidth = scaledWidths[colIndex];
-            doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
-            if (header) {
-                doc.text(
-                    String(header),
-                    xPos + colWidth / 2,
-                    yPosition + 2.8,
-                    { align: "center", maxWidth: colWidth - 1 }
-                );
-            }
-            xPos += colWidth;
-        });
-        yPosition += subHeaderHeight;
-    };
+        // Title
+        doc.setFontSize(13);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text("Assessment Grades Report", pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 7;
 
-    // Initial headers
-    drawHeaders();
+        // Metadata
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(60, 60, 60);
+        const gradeLine = `Grade: ${data.grade}`;
+        const subjectLine = `Subject: ${data.subject}`;
+        const dateLine = `Generated: ${new Date().toLocaleDateString()}`;
 
-    // Data Rows
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(7.5);
-    let rowIndex = 0;
+        doc.text(gradeLine, margin, yPosition);
+        doc.text(subjectLine, pageWidth / 2 - 15, yPosition);
+        doc.text(dateLine, pageWidth - margin - 40, yPosition);
+        yPosition += 8;
 
-    data.rows.forEach((row, dataRowIndex) => {
-        // Check if we need a new page
-        if (yPosition + rowHeight > pageHeight - margin) {
-            doc.addPage();
-            yPosition = margin;
-            drawHeaders();
+        // Validate headers match
+        const numHeaders = data.mainHeaders.length;
+        const mainHeadersNormalized = data.mainHeaders.map(h => String(h || ""));
+        const subHeadersNormalized = data.subHeaders.map((h, i) => i < numHeaders ? String(h || "") : "");
+
+        // Calculate dynamic column widths
+        const studentNameWidth = 20;
+        const totalWidth = pageWidth - 2 * margin;
+        
+        const columnWidths: number[] = [];
+        columnWidths.push(studentNameWidth);
+        
+        for (let i = 1; i < numHeaders; i++) {
+            const mainHeader = mainHeadersNormalized[i] || "";
+            const subHeader = subHeadersNormalized[i] || "";
+            const headerText = mainHeader.length > subHeader.length ? mainHeader : subHeader;
+            const calculatedWidth = Math.max(10, Math.min(headerText.length * 1.2, 25));
+            columnWidths.push(calculatedWidth);
         }
+        
+        // Normalize widths to fit page
+        const totalCalculatedWidth = columnWidths.reduce((a, b) => a + b, 0);
+        const scaleFactor = totalCalculatedWidth > totalWidth 
+            ? totalWidth / totalCalculatedWidth 
+            : 1;
+        const scaledWidths = columnWidths.map(w => w * scaleFactor);
+        
+        const rowHeight = 6;
+        const mainHeaderHeight = 7;
+        const subHeaderHeight = 5.5;
 
-        // Alternate row colors
-        if (rowIndex % 2 === 0) {
-            doc.setFillColor(240, 245, 250);
+        // Helper function to draw headers and return new yPosition
+        const drawHeaders = (currentY: number): number => {
+            let y = currentY;
+
+            // Main Headers Row
+            doc.setFillColor(41, 128, 185);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(8);
+
             let xPos = margin;
-            for (let i = 0; i < scaledWidths.length; i++) {
-                doc.rect(xPos, yPosition, scaledWidths[i], rowHeight, "F");
-                xPos += scaledWidths[i];
+            mainHeadersNormalized.forEach((header, colIndex) => {
+                if (colIndex < scaledWidths.length) {
+                    const colWidth = scaledWidths[colIndex];
+                    doc.rect(xPos, y, colWidth, mainHeaderHeight, "F");
+                    doc.text(
+                        header,
+                        xPos + colWidth / 2,
+                        y + 3.5,
+                        { align: "center", maxWidth: colWidth - 1 }
+                    );
+                    xPos += colWidth;
+                }
+            });
+            y += mainHeaderHeight;
+
+            // Sub Headers Row
+            doc.setFillColor(100, 160, 220);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(7);
+
+            xPos = margin;
+            subHeadersNormalized.forEach((header, colIndex) => {
+                if (colIndex < scaledWidths.length) {
+                    const colWidth = scaledWidths[colIndex];
+                    doc.rect(xPos, y, colWidth, subHeaderHeight, "F");
+                    if (header) {
+                        doc.text(
+                            header,
+                            xPos + colWidth / 2,
+                            y + 2.8,
+                            { align: "center", maxWidth: colWidth - 1 }
+                        );
+                    }
+                    xPos += colWidth;
+                }
+            });
+            y += subHeaderHeight;
+
+            return y;
+        };
+
+        // Initial headers
+        yPosition = drawHeaders(yPosition);
+
+        // Data Rows
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(7.5);
+        let rowIndex = 0;
+
+        data.rows.forEach((row) => {
+            // Check if we need a new page
+            if (yPosition + rowHeight > pageHeight - margin) {
+                doc.addPage();
+                yPosition = margin;
+                yPosition = drawHeaders(yPosition);
             }
-        }
 
-        // Draw row borders and content
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.2);
+            // Normalize row to match header count
+            const normalizedRow = row.map((c, i) => i < numHeaders ? c : null).filter(c => c !== null);
 
-        let xPos = margin;
-        row.forEach((cell, colIndex) => {
-            const colWidth = scaledWidths[colIndex];
-            doc.rect(xPos, yPosition, colWidth, rowHeight);
+            // Alternate row colors
+            if (rowIndex % 2 === 0) {
+                doc.setFillColor(240, 245, 250);
+                let xPos = margin;
+                for (let i = 0; i < scaledWidths.length; i++) {
+                    doc.rect(xPos, yPosition, scaledWidths[i], rowHeight, "F");
+                    xPos += scaledWidths[i];
+                }
+            }
 
-            // Left-align first column (student names), center-align others
-            const alignType = colIndex === 0 ? "left" : "center";
-            const textX = alignType === "left" ? xPos + 0.5 : xPos + colWidth / 2;
-            
-            doc.text(
-                String(cell),
-                textX,
-                yPosition + 3.5,
-                { align: alignType, maxWidth: colWidth - 1 }
-            );
-            xPos += colWidth;
+            // Draw row borders and content
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.2);
+
+            let xPos = margin;
+            normalizedRow.forEach((cell, colIndex) => {
+                const colWidth = scaledWidths[colIndex];
+                doc.rect(xPos, yPosition, colWidth, rowHeight);
+
+                const alignType = colIndex === 0 ? "left" : "center";
+                const textX = alignType === "left" ? xPos + 0.5 : xPos + colWidth / 2;
+                
+                doc.text(
+                    String(cell || ""),
+                    textX,
+                    yPosition + 3.5,
+                    { align: alignType, maxWidth: colWidth - 1 }
+                );
+                xPos += colWidth;
+            });
+
+            yPosition += rowHeight;
+            rowIndex++;
         });
 
-        yPosition += rowHeight;
-        rowIndex++;
-    });
-
-    const subject = data.subject.replace(/\s+/g, "_");
-    const grade = data.grade.replace(/\s+/g, "_");
-    doc.save(`${subject}_${grade}_Assessment_Grades.pdf`);
+        const subject = data.subject.replace(/\s+/g, "_");
+        const grade = data.grade.replace(/\s+/g, "_");
+        doc.save(`${subject}_${grade}_Assessment_Grades.pdf`);
+    } catch (error) {
+        console.error("PDF Export Error:", error);
+        throw error;
+    }
 };
