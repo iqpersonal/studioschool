@@ -372,8 +372,8 @@ const AssessmentGradeEntry: React.FC = () => {
             // Build main headers: assessment names + summary columns
             const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
             
-            // Build sub headers: sub-assessment names
-            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg %', 'Mark %', 'Final %'];
+            // Build sub headers: sub-assessment names (FIX: Changed first element from '' to 'Student Name')
+            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg Score', 'Final Mark', 'Total'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
@@ -382,9 +382,9 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const assessmentPercentages: number[] = [];
+                const assessmentScores: number[] = [];
                 
-                // Add raw scores for regular assessments
+                // Add raw scores for regular assessments (FIX: Collect actual scores, not percentages)
                 regularAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
@@ -392,17 +392,16 @@ const AssessmentGradeEntry: React.FC = () => {
                         const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
-                        // Calculate percentage for regular assessments
+                        // Collect raw scores (not percentages)
                         if (score !== undefined && score !== null && score !== '') {
-                            const percentage = (Number(score) / sub.maxScore) * 100;
-                            assessmentPercentages.push(percentage);
+                            assessmentScores.push(Number(score));
                         }
                     });
                 });
                 
-                // Calculate summary columns
-                const avgAssessments = assessmentPercentages.length > 0
-                    ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
+                // Calculate summary columns using raw scores
+                const avgAssessments = assessmentScores.length > 0
+                    ? (assessmentScores.reduce((a, b) => a + b, 0) / assessmentScores.length).toFixed(2)
                     : '';
                 
                 const termFinalValue = '25';
@@ -467,7 +466,7 @@ const AssessmentGradeEntry: React.FC = () => {
             
             // Build headers
             const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
-            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg %', 'Mark %', 'Final %'];
+            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg Score', 'Final Mark', 'Total'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
@@ -476,7 +475,7 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const assessmentPercentages: number[] = [];
+                const assessmentScores: number[] = [];
                 
                 regularAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
@@ -485,15 +484,16 @@ const AssessmentGradeEntry: React.FC = () => {
                         const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
+                        // Collect raw scores (not percentages)
                         if (score !== undefined && score !== null && score !== '') {
-                            const percentage = (Number(score) / sub.maxScore) * 100;
-                            assessmentPercentages.push(percentage);
+                            assessmentScores.push(Number(score));
                         }
                     });
                 });
                 
-                const avgAssessments = assessmentPercentages.length > 0
-                    ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
+                // Calculate summary columns using raw scores
+                const avgAssessments = assessmentScores.length > 0
+                    ? (assessmentScores.reduce((a, b) => a + b, 0) / assessmentScores.length).toFixed(2)
                     : '';
                 
                 const termFinalValue = '25';
@@ -691,10 +691,4 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
-
-
-
-
-
-
 
