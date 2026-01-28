@@ -41,7 +41,6 @@ export const exportToExcel = (data: ExportGradesData) => {
         if (idx === 0) {
             return { wch: 22 }; // Student Name
         }
-        // Calculate width based on header length (min 12, max 20)
         const headerLen = String(header).length;
         const width = Math.max(12, Math.min(headerLen + 2, 20));
         return { wch: width };
@@ -65,174 +64,175 @@ export const exportToPDF = (data: ExportGradesData) => {
 
         const pageHeight = doc.internal.pageSize.getHeight();
         const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 10;
-        let yPosition = 12;
+        const margin = 15;
+        let yPosition = 15;
 
-        // School Header
-        doc.setFontSize(16);
+        // ============= PROFESSIONAL HEADER =============
+        // School Name
+        doc.setFontSize(18);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(41, 128, 185);
+        doc.setTextColor(25, 55, 109); // Professional dark blue
         doc.text(data.schoolName || "School", pageWidth / 2, yPosition, { align: "center" });
-        yPosition += 7;
+        yPosition += 8;
 
         // Title
-        doc.setFontSize(13);
+        doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(0, 0, 0);
         doc.text("Assessment Grades Report", pageWidth / 2, yPosition, { align: "center" });
         yPosition += 7;
 
-        // Metadata
-        doc.setFontSize(9);
+        // Metadata Line
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(60, 60, 60);
-        const gradeLine = `Grade: ${data.grade}`;
-        const subjectLine = `Subject: ${data.subject}`;
-        const dateLine = `Generated: ${new Date().toLocaleDateString()}`;
+        doc.setTextColor(80, 80, 80);
+        const metadata = `Grade: ${data.grade}    Subject: ${data.subject}    Section: ${data.section}    Generated: ${new Date().toLocaleDateString()}`;
+        doc.text(metadata, pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 10;
 
-        doc.text(gradeLine, margin, yPosition);
-        doc.text(subjectLine, pageWidth / 2 - 15, yPosition);
-        doc.text(dateLine, pageWidth - margin - 40, yPosition);
-        yPosition += 8;
-
-        // Validate headers match
+        // ============= TABLE SETUP =============
         const numHeaders = data.mainHeaders.length;
-        const mainHeadersNormalized = data.mainHeaders.map(h => String(h || ""));
-        const subHeadersNormalized = data.subHeaders.map((h, i) => i < numHeaders ? String(h || "") : "");
-
-        // Calculate dynamic column widths
-        const studentNameWidth = 20;
+        const studentNameWidth = 35; // Wider for full names
         const totalWidth = pageWidth - 2 * margin;
-        
-        const columnWidths: number[] = [];
-        columnWidths.push(studentNameWidth);
-        
-        for (let i = 1; i < numHeaders; i++) {
-            const mainHeader = mainHeadersNormalized[i] || "";
-            const subHeader = subHeadersNormalized[i] || "";
-            const headerText = mainHeader.length > subHeader.length ? mainHeader : subHeader;
-            const calculatedWidth = Math.max(10, Math.min(headerText.length * 1.2, 25));
-            columnWidths.push(calculatedWidth);
-        }
-        
-        // Normalize widths to fit page
-        const totalCalculatedWidth = columnWidths.reduce((a, b) => a + b, 0);
-        const scaleFactor = totalCalculatedWidth > totalWidth 
-            ? totalWidth / totalCalculatedWidth 
-            : 1;
-        const scaledWidths = columnWidths.map(w => w * scaleFactor);
-        
-        const rowHeight = 6;
-        const mainHeaderHeight = 7;
-        const subHeaderHeight = 5.5;
+        const remainingWidth = totalWidth - studentNameWidth;
+        const cellWidth = remainingWidth / (numHeaders - 1); // -1 because first column is student name
 
-        // Helper function to draw headers and return new yPosition
-        const drawHeaders = (currentY: number): number => {
-            let y = currentY;
+        const mainHeaderHeight = 8;
+        const subHeaderHeight = 7;
+        const dataRowHeight = 8;
 
-            // Main Headers Row
-            doc.setFillColor(41, 128, 185);
-            doc.setFont("helvetica", "bold");
+        // Helper function to draw table headers (main + sub)
+        const drawHeaders = (startY: number): number => {
+            let y = startY;
+
+            // ===== MAIN HEADERS ROW =====
+            doc.setFillColor(25, 55, 109); // Professional dark blue
+            doc.setDrawColor(25, 55, 109);
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
 
-            let xPos = margin;
-            mainHeadersNormalized.forEach((header, colIndex) => {
-                if (colIndex < scaledWidths.length) {
-                    const colWidth = scaledWidths[colIndex];
-                    doc.rect(xPos, y, colWidth, mainHeaderHeight, "F");
-                    doc.text(
-                        header,
-                        xPos + colWidth / 2,
-                        y + 3.5,
-                        { align: "center", maxWidth: colWidth - 1 }
-                    );
-                    xPos += colWidth;
-                }
-            });
+            // Student Name header
+            doc.rect(margin, y, studentNameWidth, mainHeaderHeight, "FD");
+            doc.text(
+                "Student Name",
+                margin + studentNameWidth / 2,
+                y + 5.5,
+                { align: "center" }
+            );
+
+            // Assessment headers (spanning their sub-assessments)
+            let xPos = margin + studentNameWidth;
+            for (let i = 1; i < numHeaders; i++) {
+                const header = String(data.mainHeaders[i] || "");
+                doc.rect(xPos, y, cellWidth, mainHeaderHeight, "FD");
+                doc.text(
+                    header,
+                    xPos + cellWidth / 2,
+                    y + 5.5,
+                    { align: "center", maxWidth: cellWidth - 1 }
+                );
+                xPos += cellWidth;
+            }
             y += mainHeaderHeight;
 
-            // Sub Headers Row
-            doc.setFillColor(100, 160, 220);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(7);
+            // ===== SUB-HEADERS ROW =====
+            doc.setFillColor(220, 230, 241); // Light blue
+            doc.setDrawColor(25, 55, 109);
+            doc.setTextColor(25, 55, 109);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
 
-            xPos = margin;
-            subHeadersNormalized.forEach((header, colIndex) => {
-                if (colIndex < scaledWidths.length) {
-                    const colWidth = scaledWidths[colIndex];
-                    doc.rect(xPos, y, colWidth, subHeaderHeight, "F");
-                    if (header) {
-                        doc.text(
-                            header,
-                            xPos + colWidth / 2,
-                            y + 2.8,
-                            { align: "center", maxWidth: colWidth - 1 }
-                        );
-                    }
-                    xPos += colWidth;
+            // Empty cell under Student Name
+            doc.rect(margin, y, studentNameWidth, subHeaderHeight, "FD");
+
+            // Sub-assessment headers
+            xPos = margin + studentNameWidth;
+            for (let i = 1; i < numHeaders; i++) {
+                const subHeader = String(data.subHeaders[i] || "");
+                doc.rect(xPos, y, cellWidth, subHeaderHeight, "FD");
+                if (subHeader) {
+                    doc.text(
+                        subHeader,
+                        xPos + cellWidth / 2,
+                        y + 4.5,
+                        { align: "center", maxWidth: cellWidth - 1 }
+                    );
                 }
-            });
+                xPos += cellWidth;
+            }
             y += subHeaderHeight;
 
             return y;
         };
 
-        // Initial headers
+        // Draw initial headers
         yPosition = drawHeaders(yPosition);
 
-        // Data Rows
+        // ============= DATA ROWS =============
         doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
         doc.setTextColor(0, 0, 0);
-        doc.setFontSize(7.5);
-        let rowIndex = 0;
+        doc.setDrawColor(150, 150, 150);
 
+        let rowIndex = 0;
         data.rows.forEach((row) => {
             // Check if we need a new page
-            if (yPosition + rowHeight > pageHeight - margin) {
+            if (yPosition + dataRowHeight > pageHeight - margin) {
                 doc.addPage();
                 yPosition = margin;
                 yPosition = drawHeaders(yPosition);
             }
 
-            // Normalize row to match header count
-            const normalizedRow = row.map((c, i) => i < numHeaders ? c : null).filter(c => c !== null);
-
-            // Alternate row colors
+            // Alternate row background (subtle)
             if (rowIndex % 2 === 0) {
-                doc.setFillColor(240, 245, 250);
-                let xPos = margin;
-                for (let i = 0; i < scaledWidths.length; i++) {
-                    doc.rect(xPos, yPosition, scaledWidths[i], rowHeight, "F");
-                    xPos += scaledWidths[i];
-                }
+                doc.setFillColor(248, 249, 250);
+                doc.rect(margin, yPosition, totalWidth, dataRowHeight, "F");
             }
 
-            // Draw row borders and content
+            // Draw borders (cleaner - just outer and row separators)
             doc.setDrawColor(200, 200, 200);
-            doc.setLineWidth(0.2);
+            doc.setLineWidth(0.3);
 
-            let xPos = margin;
-            normalizedRow.forEach((cell, colIndex) => {
-                const colWidth = scaledWidths[colIndex];
-                doc.rect(xPos, yPosition, colWidth, rowHeight);
+            // Student name cell
+            doc.rect(margin, yPosition, studentNameWidth, dataRowHeight);
+            const studentName = String(row[0] || "");
+            doc.text(
+                studentName,
+                margin + 2,
+                yPosition + 5,
+                { maxWidth: studentNameWidth - 3 }
+            );
 
-                const alignType = colIndex === 0 ? "left" : "center";
-                const textX = alignType === "left" ? xPos + 0.5 : xPos + colWidth / 2;
-                
+            // Score cells
+            let xPos = margin + studentNameWidth;
+            for (let i = 1; i < row.length && i < numHeaders; i++) {
+                doc.rect(xPos, yPosition, cellWidth, dataRowHeight);
+                const cellValue = String(row[i] || "");
                 doc.text(
-                    String(cell || ""),
-                    textX,
-                    yPosition + 3.5,
-                    { align: alignType, maxWidth: colWidth - 1 }
+                    cellValue,
+                    xPos + cellWidth / 2,
+                    yPosition + 5,
+                    { align: "center", maxWidth: cellWidth - 1 }
                 );
-                xPos += colWidth;
-            });
+                xPos += cellWidth;
+            }
 
-            yPosition += rowHeight;
+            yPosition += dataRowHeight;
             rowIndex++;
         });
+
+        // ============= FOOTER =============
+        yPosition += 5;
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.setFont("helvetica", "italic");
+        doc.text(
+            `Report generated on ${new Date().toLocaleString()}`,
+            pageWidth / 2,
+            pageHeight - 10,
+            { align: "center" }
+        );
 
         const subject = data.subject.replace(/\s+/g, "_");
         const grade = data.grade.replace(/\s+/g, "_");
