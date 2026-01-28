@@ -338,7 +338,7 @@ const AssessmentGradeEntry: React.FC = () => {
         }
     };
 
-    const handleGenerateSubAssessmentPDF = async (mainAssessmentName: string, subAssessmentId: string, subAssessmentName: string, maxScore: number) => {
+    const handleGenerateSubAssessmentPDF = async (mainAssessmentId: string, mainAssessmentName: string, subAssessmentId: string, subAssessmentName: string, maxScore: number) => {
         try {
             if (!currentUserData?.schoolId) {
                 alert('School information not found');
@@ -357,7 +357,7 @@ const AssessmentGradeEntry: React.FC = () => {
                         .filter(Boolean)
                         .join(' ')
                         .trim() || 'N/A',
-                    rawScore: grades[student.uid]?.scores?.[selectedMainAssessmentId]?.[subAssessmentId] ?? 0
+                    rawScore: grades[student.uid]?.scores?.[mainAssessmentId]?.[subAssessmentId] ?? 0
                 }))
                 .filter(s => s.rawScore !== undefined);
 
@@ -734,7 +734,7 @@ const AssessmentGradeEntry: React.FC = () => {
                                             <th key={sub.id} className="border p-2 text-center min-w-[80px] bg-muted/30 group relative">
                                                 {sub.name} <br /> <span className="text-xs text-muted-foreground">(/ {sub.maxScore})</span>
                                                 <button 
-                                                    onClick={() => handleGenerateSubAssessmentPDF(main.name, sub.id, sub.name, sub.maxScore)}
+                                                    onClick={() => handleGenerateSubAssessmentPDF(main.id, main.name, sub.id, sub.name, sub.maxScore)}
                                                     className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
                                                     title="Download PDF report for this sub-assessment"
                                                 >
@@ -781,4 +781,7 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
+
+
 
