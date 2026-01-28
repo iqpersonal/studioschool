@@ -300,6 +300,7 @@ export interface SubAssessmentPDFData {
     grade: string;
     section: string;
     maxScore: number;
+    teacherName?: string;
     students: Array<{
         name: string;
         rawScore: number;
