@@ -549,3 +549,259 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
     }
 };
 
+// ============= PROGRESS REPORT TYPES & FUNCTIONS =============
+
+export interface ProgressReportSubject {
+    subjectName: string;
+    average: number;           // e.g., 85.5
+    percentage: string;        // e.g., "85.5%"
+    category: string;          // e.g., "Strong Achievement"
+    categoryColor: { r: number; g: number; b: number };
+}
+
+export interface ProgressReportPDFData {
+    schoolName: string;
+    studentName: string;
+    grade: string;
+    section: string;
+    generatedDate: string;
+    teacherName?: string;
+    subjects: ProgressReportSubject[];
+    overallAverage: number;
+    overallPercentage: string;
+    overallCategory: string;
+}
+
+// RUBRIC MAPPING FOR PERFORMANCE CATEGORIES
+const PROGRESS_REPORT_RUBRIC = [
+    { minScore: 90, maxScore: 100, category: 'Outstanding Performance', color: { r: 0, g: 128, b: 0 } },      // Green
+    { minScore: 80, maxScore: 89, category: 'Strong Achievement', color: { r: 0, g: 0, b: 255 } },           // Blue
+    { minScore: 70, maxScore: 79, category: 'Consistent Achievement', color: { r: 255, g: 165, b: 0 } },     // Orange
+    { minScore: 60, maxScore: 69, category: 'Needs Improvement', color: { r: 255, g: 102, b: 0 } },          // Dark Orange
+    { minScore: 0, maxScore: 59, category: 'Danger of Failing', color: { r: 255, g: 0, b: 0 } }              // Red
+];
+
+/**
+ * Get performance category and color based on score
+ */
+export const getCategoryFromScore = (score: number): { category: string; color: { r: number; g: number; b: number } } => {
+    for (const rubric of PROGRESS_REPORT_RUBRIC) {
+        if (score >= rubric.minScore && score <= rubric.maxScore) {
+            return {
+                category: rubric.category,
+                color: rubric.color
+            };
+        }
+    }
+    return {
+        category: 'Not Graded',
+        color: { r: 128, g: 128, b: 128 }
+    };
+};
+
+/**
+ * Generate individual student progress report PDF
+ */
+export const generateProgressReportPDF = (data: ProgressReportPDFData) => {
+    try {
+        const doc = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4"
+        });
+
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 12;
+        let yPosition = 15;
+
+        // ============= PROFESSIONAL HEADER =============
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text(data.schoolName, pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 8;
+
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text("PROGRESS REPORT", pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 10;
+
+        // ============= METADATA SECTION =============
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        
+        const leftX = margin;
+        const rightX = pageWidth / 2 + 5;
+        let metaY = yPosition;
+
+        // LEFT COLUMN
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Student Name:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.studentName, leftX + 35, metaY);
+        metaY += 5;
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Grade:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.grade, leftX + 35, metaY);
+        metaY += 5;
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Section:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.section, leftX + 35, metaY);
+        metaY += 5;
+
+        if (data.teacherName) {
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(25, 55, 109);
+            doc.text("Teacher:", leftX, metaY);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            doc.text(data.teacherName, leftX + 35, metaY);
+        }
+
+        // RIGHT COLUMN
+        let rightMetaY = yPosition;
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Generated:", rightX, rightMetaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.generatedDate, rightX + 30, rightMetaY);
+
+        yPosition = Math.max(metaY, rightMetaY) + 12;
+
+        // ============= SUBJECTS TABLE =============
+        const tableMargin = margin;
+        const colWidth = (pageWidth - 2 * tableMargin) / 4;
+        const headerHeight = 8;
+        const rowHeight = 7;
+
+        // Draw header
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255);
+        doc.setFillColor(25, 55, 109);
+
+        // Subject column
+        doc.rect(tableMargin, yPosition, colWidth, headerHeight, "F");
+        doc.text("Subject", tableMargin + 2, yPosition + 6, { maxWidth: colWidth - 4 });
+
+        // Average % column
+        doc.rect(tableMargin + colWidth, yPosition, colWidth, headerHeight, "F");
+        doc.text("Average %", tableMargin + colWidth + 2, yPosition + 6, { align: "center", maxWidth: colWidth - 4 });
+
+        // Category column
+        doc.rect(tableMargin + colWidth * 2, yPosition, colWidth, headerHeight, "F");
+        doc.text("Category", tableMargin + colWidth * 2 + 2, yPosition + 6, { align: "center", maxWidth: colWidth - 4 });
+
+        // Status column
+        doc.rect(tableMargin + colWidth * 3, yPosition, colWidth, headerHeight, "F");
+        doc.text("Status", tableMargin + colWidth * 3 + 2, yPosition + 6, { align: "center", maxWidth: colWidth - 4 });
+
+        yPosition += headerHeight;
+
+        // Draw subject rows
+        let rowIdx = 0;
+        data.subjects.forEach(subject => {
+            // Alternating row colors
+            if (rowIdx % 2 === 0) {
+                doc.setFillColor(240, 245, 250);
+                doc.rect(tableMargin, yPosition, pageWidth - 2 * tableMargin, rowHeight, "F");
+            }
+
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(9);
+
+            // Subject Name
+            doc.text(subject.subjectName, tableMargin + 2, yPosition + 5, { maxWidth: colWidth - 4 });
+
+            // Average
+            doc.text(subject.percentage, tableMargin + colWidth + 2, yPosition + 5, { align: "center", maxWidth: colWidth - 4 });
+
+            // Category
+            doc.text(subject.category, tableMargin + colWidth * 2 + 2, yPosition + 5, { align: "center", maxWidth: colWidth - 4 });
+
+            // Color Box
+            doc.setFillColor(subject.categoryColor.r, subject.categoryColor.g, subject.categoryColor.b);
+            doc.rect(tableMargin + colWidth * 3 + 15, yPosition + 1, 5, 5, "F");
+
+            // Draw border
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.2);
+            doc.rect(tableMargin, yPosition, pageWidth - 2 * tableMargin, rowHeight);
+
+            yPosition += rowHeight;
+            rowIdx++;
+        });
+
+        yPosition += 7;
+
+        // ============= OVERALL PERFORMANCE SECTION =============
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(25, 55, 109);
+        doc.text("Overall Performance Summary", tableMargin, yPosition);
+        yPosition += 8;
+
+        // Draw summary box
+        doc.setDrawColor(25, 55, 109);
+        doc.setLineWidth(0.5);
+        doc.rect(tableMargin, yPosition, pageWidth - 2 * tableMargin, 15);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+
+        const summaryLeftX = tableMargin + 3;
+        const summaryRightX = tableMargin + (pageWidth - 2 * tableMargin) / 2;
+
+        // Left side of summary
+        doc.text(`Average Score: ${data.overallPercentage}`, summaryLeftX, yPosition + 5);
+        doc.text(`Performance Level: ${data.overallCategory}`, summaryLeftX, yPosition + 10);
+
+        // Right side of summary - color indicator
+        doc.setFontSize(8);
+        const { color } = getCategoryFromScore(data.overallAverage);
+        doc.setFillColor(color.r, color.g, color.b);
+        doc.rect(summaryRightX + 40, yPosition + 3, 8, 8, "F");
+        doc.setTextColor(50, 50, 50);
+        doc.text("Performance Level", summaryRightX + 50, yPosition + 5);
+
+        // ============= FOOTER =============
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        doc.setFont("helvetica", "italic");
+        doc.text(
+            `Report generated on ${new Date().toLocaleString()}`,
+            pageWidth / 2,
+            pageHeight - 5,
+            { align: "center" }
+        );
+
+        const fileName = `${data.studentName.replace(/\s+/g, "_")}_Progress_Report.pdf`;
+        doc.save(fileName);
+    } catch (error) {
+        console.error("Progress Report PDF Export Error:", error);
+        throw error;
+    }
+};
+
+export default {
+    exportToExcel,
+    exportToPDF,
+    generateSubAssessmentPDF,
+    generateProgressReportPDF,
+    getCategoryFromScore
+};

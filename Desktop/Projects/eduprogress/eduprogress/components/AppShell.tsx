@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Layout from './layout/Layout';
 import { useAuth } from '../hooks/useAuth';
@@ -34,6 +34,7 @@ import ManagementAssignments from '../pages/school-admin/ManagementAssignments';
 import ImportAssignments from '../pages/school-admin/ImportAssignments';
 import AssessmentSetup from '../pages/school-admin/AssessmentSetup';
 import AssessmentGradeEntry from '../pages/school-admin/AssessmentGradeEntry';
+import GenerateProgressReport from '../pages/school-admin/GenerateProgressReport';
 import Attendance from '../pages/school-admin/Attendance';
 import AuditLogs from '../pages/school-admin/AuditLogs';
 import NoticeBoard from '../pages/school-admin/NoticeBoard';
@@ -139,6 +140,7 @@ const AppShell: React.FC = () => {
                         <Route path="/import-assignments" element={<ErrorBoundary scope="import-assignments"><ImportAssignments /></ErrorBoundary>} />
                         <Route path="/school-settings" element={<ErrorBoundary scope="school-settings"><SchoolSettings /></ErrorBoundary>} />
                         <Route path="/school-admin/assessment-setup" element={<ErrorBoundary scope="assessment-setup"><AssessmentSetup /></ErrorBoundary>} />
+                        <Route path="/school-admin/generate-progress-report" element={<ErrorBoundary scope="generate-progress-report"><GenerateProgressReport /></ErrorBoundary>} />
                         <Route path="/school-admin/assessment-grades" element={<ErrorBoundary scope="assessment-grades"><AssessmentGradeEntry /></ErrorBoundary>} />
                         <Route path="/attendance" element={<ErrorBoundary scope="attendance"><Attendance /></ErrorBoundary>} />
                         <Route path="/audit-logs" element={<ErrorBoundary scope="audit-logs"><AuditLogs /></ErrorBoundary>} />
@@ -164,6 +166,7 @@ const AppShell: React.FC = () => {
                         <Route path="/" element={<ErrorBoundary scope="teacher-school"><MySchool /></ErrorBoundary>} />
                         <Route path="/progress-reports" element={<ErrorBoundary scope="teacher-progress"><ProgressReports /></ErrorBoundary>} />
                         <Route path="/progress-reports/:grade/:section/:studentId/:month" element={<ErrorBoundary scope="teacher-report"><StudentReportForm /></ErrorBoundary>} />
+                        <Route path="/school-admin/generate-progress-report" element={<ErrorBoundary scope="generate-progress-report"><GenerateProgressReport /></ErrorBoundary>} />
                         <Route path="/school-admin/assessment-grades" element={<ErrorBoundary scope="teacher-grades"><AssessmentGradeEntry /></ErrorBoundary>} />
                         <Route path="/attendance" element={<ErrorBoundary scope="teacher-attendance"><Attendance /></ErrorBoundary>} />
                         <Route path="/teacher/lesson-planner" element={<ErrorBoundary scope="lesson-planner"><LessonPlanner /></ErrorBoundary>} />
@@ -202,3 +205,4 @@ const AppShell: React.FC = () => {
 };
 
 export default AppShell;
+
