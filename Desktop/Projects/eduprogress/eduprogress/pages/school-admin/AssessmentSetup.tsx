@@ -74,7 +74,14 @@ const AssessmentSetup: React.FC = () => {
     const updateMainAssessment = (index: number, field: keyof MainAssessment, value: string | number) => {
         setStructure(prev => {
             const newAssessments = [...(prev.assessments || [])];
-            newAssessments[index] = { ...newAssessments[index], [field]: value };
+            
+            // When name is set to "Final", automatically set weightage to 25
+            if (field === 'name' && value === 'Final') {
+                newAssessments[index] = { ...newAssessments[index], [field]: value, weightage: 25 };
+            } else {
+                newAssessments[index] = { ...newAssessments[index], [field]: value };
+            }
+            
             return { ...prev, assessments: newAssessments };
         });
     };
@@ -226,7 +233,7 @@ const AssessmentSetup: React.FC = () => {
                 <CardHeader>
                     <CardTitle>Grading Model: 75% Regular + 25% Term Final</CardTitle>
                     <CardDescription>
-                        Configure assessments: Regular assessments must total 75%, and you must have one "Final" assessment at 25%.
+                        Configure assessments: Regular assessments must total 75%, and you must have one "Final" assessment at 25%. Name an assessment "Final" to automatically set it to 25%.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col sm:flex-row gap-4">
@@ -278,10 +285,9 @@ const AssessmentSetup: React.FC = () => {
                                                     <Input
                                                         value={main.name}
                                                         onChange={e => updateMainAssessment(mIndex, 'name', e.target.value)}
-                                                        placeholder="e.g. Quiz, Midterm, Final"
-                                                        disabled={isTermFinal}
+                                                        placeholder="e.g. Quiz, Midterm, or type 'Final' for Term Final"
                                                     />
-                                                    {isTermFinal && <p className="text-xs text-amber-700 mt-1">Term Final must be named "Final"</p>}
+                                                    {isTermFinal && <p className="text-xs text-amber-700 mt-1"> Term Final automatically set to 25%</p>}
                                                 </div>
                                                 <div className="w-32">
                                                     <Label>Weightage (%)</Label>
@@ -290,8 +296,9 @@ const AssessmentSetup: React.FC = () => {
                                                         value={main.weightage}
                                                         onChange={e => updateMainAssessment(mIndex, 'weightage', Number(e.target.value))}
                                                         disabled={isTermFinal}
+                                                        className={isTermFinal ? 'bg-amber-100' : ''}
                                                     />
-                                                    {isTermFinal && <p className="text-xs text-amber-700 mt-1">Fixed at 25%</p>}
+                                                    {isTermFinal && <p className="text-xs text-amber-700 mt-1">Fixed: 25%</p>}
                                                 </div>
                                                 <Button variant="destructive" size="icon" onClick={() => removeMainAssessment(mIndex)}>
                                                     <span className="sr-only">Delete</span>
