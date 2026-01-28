@@ -152,28 +152,45 @@ export const exportToPDF = (data: ExportGradesData) => {
             y += mainHeaderHeight;
 
             // ===== SUB-HEADERS ROW =====
-            doc.setFillColor(220, 230, 241);
-            doc.setDrawColor(25, 55, 109);
+            // CRITICAL: Set all colors and styles ONCE before loop to ensure consistency
+            doc.setFillColor(220, 230, 241);      // Light blue background
+            doc.setDrawColor(25, 55, 109);         // Dark blue borders
             doc.setLineWidth(0.3);
-            doc.setTextColor(0, 0, 0);  // Changed to black for better contrast
-            doc.setFont("helvetica", "bold");  // Bold for better visibility
+            doc.setTextColor(0, 0, 0);             // Black text
+            doc.setFont("helvetica", "bold");      // Bold font
             doc.setFontSize(8);
 
             // Empty cells for row number and student name columns
+            // Each rect() call needs proper state - set fill color before each to ensure it applies
+            doc.setFillColor(220, 230, 241);  // Ensure light blue
             doc.rect(margin, y, rowNoWidth, subHeaderHeight, "FD");
+            
+            doc.setFillColor(220, 230, 241);  // Ensure light blue
             doc.rect(margin + rowNoWidth, y, studentNameWidth, subHeaderHeight, "FD");
 
             // Sub-assessment and summary headers - reads from index 1 onwards (skips 'Student Name')
             xPos = margin + rowNoWidth + studentNameWidth;
             for (let i = 0; i < numDataColumns; i++) {
                 const subHeader = String(data.subHeaders[i + 1] || ""); // +1 because first is empty for student name
+                
+                // IMPORTANT: Reset fill color for each cell to prevent state issues
+                doc.setFillColor(220, 230, 241);  // Light blue
+                doc.setDrawColor(25, 55, 109);    // Dark blue border
+                doc.setLineWidth(0.3);
+                
                 doc.rect(xPos, y, cellWidth, subHeaderHeight, "FD");
+                
                 if (subHeader) {
+                    // Ensure text color is set to black before rendering
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(8);
+                    
                     // Y position adjusted to 4.5 for better vertical centering in 6mm cell with font size 8
                     doc.text(
                         subHeader,
                         xPos + cellWidth / 2,
-                        y + 4.5,  // Changed from 3.5 to 4.5 for better centering
+                        y + 4.5,  // Centered in 6mm tall cell
                         { align: "center", maxWidth: cellWidth - 0.5 }
                     );
                 }
