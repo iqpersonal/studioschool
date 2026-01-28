@@ -368,7 +368,8 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         };
         
         const totalWidth = colWidth.sNo + colWidth.name + colWidth.rawScore + colWidth.scorePercent;
-        const tableStartX = margin;
+        const availableWidth = pageWidth - 2 * margin;
+        const tableStartX = margin + (availableWidth - totalWidth) / 2;
         const headerHeight = 8;
         const rowHeight = 6;
 
