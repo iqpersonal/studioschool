@@ -24,17 +24,19 @@ export const exportToExcel = (data: ExportGradesData) => {
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    // Apply center alignment to headers (rows 4 and 5, which are indices 3 and 4)
+    // Apply center alignment to both header rows
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
     for (let row = 3; row <= 4; row++) {
         for (let col = 0; col <= range.e.c; col++) {
             const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
             if (!ws[cellRef]) ws[cellRef] = { t: "s", v: "" };
-            ws[cellRef].a = { h: "center", v: "center" };
+            if (!ws[cellRef].a) ws[cellRef].a = {};
+            ws[cellRef].a.h = "center";
+            ws[cellRef].a.v = "center";
         }
     }
 
-    // Set column widths for better appearance
+    // Set column widths
     ws["!cols"] = Array(range.e.c + 1).fill(null).map((_, idx) => ({
         wch: idx === 0 ? 25 : 12
     }));
@@ -59,13 +61,14 @@ export const exportToPDF = (data: ExportGradesData) => {
     const margin = 12;
     let yPosition = 15;
 
-    // Header
-    doc.setFontSize(18);
+    // School Header
+    doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(41, 128, 185);
     doc.text(data.schoolName, pageWidth / 2, yPosition, { align: "center" });
     yPosition += 8;
 
+    // Title
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -89,7 +92,8 @@ export const exportToPDF = (data: ExportGradesData) => {
     const numCols = data.mainHeaders.length;
     const colWidth = (pageWidth - 2 * margin) / numCols;
     const rowHeight = 7;
-    const headerHeight = 10;
+    const mainHeaderHeight = 8;
+    const subHeaderHeight = 6;
 
     // Main Headers Row
     doc.setFillColor(41, 128, 185);
@@ -99,15 +103,15 @@ export const exportToPDF = (data: ExportGradesData) => {
 
     data.mainHeaders.forEach((header, colIndex) => {
         const xPos = margin + colIndex * colWidth;
-        doc.rect(xPos, yPosition, colWidth, headerHeight, "F");
+        doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
         doc.text(
             String(header),
             xPos + colWidth / 2,
-            yPosition + 5,
+            yPosition + 4,
             { align: "center", maxWidth: colWidth - 2 }
         );
     });
-    yPosition += headerHeight;
+    yPosition += mainHeaderHeight;
 
     // Sub Headers Row
     doc.setFillColor(100, 160, 220);
@@ -117,7 +121,7 @@ export const exportToPDF = (data: ExportGradesData) => {
 
     data.subHeaders.forEach((header, colIndex) => {
         const xPos = margin + colIndex * colWidth;
-        doc.rect(xPos, yPosition, colWidth, headerHeight / 2, "F");
+        doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
         if (header) {
             doc.text(
                 String(header),
@@ -127,7 +131,7 @@ export const exportToPDF = (data: ExportGradesData) => {
             );
         }
     });
-    yPosition += headerHeight / 2;
+    yPosition += subHeaderHeight;
 
     // Data Rows
     doc.setFont("helvetica", "normal");
@@ -149,15 +153,15 @@ export const exportToPDF = (data: ExportGradesData) => {
 
             data.mainHeaders.forEach((header, colIndex) => {
                 const xPos = margin + colIndex * colWidth;
-                doc.rect(xPos, yPosition, colWidth, headerHeight, "F");
+                doc.rect(xPos, yPosition, colWidth, mainHeaderHeight, "F");
                 doc.text(
                     String(header),
                     xPos + colWidth / 2,
-                    yPosition + 5,
+                    yPosition + 4,
                     { align: "center", maxWidth: colWidth - 2 }
                 );
             });
-            yPosition += headerHeight;
+            yPosition += mainHeaderHeight;
 
             doc.setFillColor(100, 160, 220);
             doc.setFont("helvetica", "bold");
@@ -166,7 +170,7 @@ export const exportToPDF = (data: ExportGradesData) => {
 
             data.subHeaders.forEach((header, colIndex) => {
                 const xPos = margin + colIndex * colWidth;
-                doc.rect(xPos, yPosition, colWidth, headerHeight / 2, "F");
+                doc.rect(xPos, yPosition, colWidth, subHeaderHeight, "F");
                 if (header) {
                     doc.text(
                         String(header),
@@ -176,7 +180,7 @@ export const exportToPDF = (data: ExportGradesData) => {
                     );
                 }
             });
-            yPosition += headerHeight / 2;
+            yPosition += subHeaderHeight;
 
             doc.setFont("helvetica", "normal");
             doc.setTextColor(0, 0, 0);
@@ -189,7 +193,7 @@ export const exportToPDF = (data: ExportGradesData) => {
             doc.rect(margin, yPosition, pageWidth - 2 * margin, rowHeight, "F");
         }
 
-        // Draw row borders
+        // Draw row borders and content
         doc.setDrawColor(200, 200, 200);
         doc.setLineWidth(0.3);
 
@@ -199,9 +203,11 @@ export const exportToPDF = (data: ExportGradesData) => {
 
             // Left-align first column (student names), center-align others
             const alignType = colIndex === 0 ? "left" : "center";
+            const textX = alignType === "left" ? xPos + 1 : xPos + colWidth / 2;
+            
             doc.text(
                 String(cell),
-                alignType === "left" ? xPos + 2 : xPos + colWidth / 2,
+                textX,
                 yPosition + 4,
                 { align: alignType, maxWidth: colWidth - 2 }
             );

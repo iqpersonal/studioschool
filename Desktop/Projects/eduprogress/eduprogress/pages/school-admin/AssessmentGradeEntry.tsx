@@ -356,11 +356,18 @@ const AssessmentGradeEntry: React.FC = () => {
             
             const allAssessments = structure.assessments;
             
-            // Build two-row headers: main assessments with colspan, then sub-assessments
-            const mainHeaders = ['Student Name', ...allAssessments.map(main => main.name), 'Average of Assessments', 'Term Final', 'Total Average'];
-            const subHeaders = ['', ...allAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            // Identify Term Final (assessment named "Final")
+            const termFinalAssessment = allAssessments.find(a => a.name === 'Final');
             
-            // Build rows with raw scores and calculated columns
+            // Regular assessments are all except "Final"
+            const regularAssessments = allAssessments.filter(a => a.name !== 'Final');
+            
+            // Build main headers: assessment names + summary columns
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
+            
+            // Build sub headers: sub-assessment names
+            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
@@ -370,41 +377,36 @@ const AssessmentGradeEntry: React.FC = () => {
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
                 
-                // Find Term Final assessment (last main assessment)
-                const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
-
-                // Process all assessments
-                allAssessments.forEach(main => {
+                // Add raw scores for regular assessments
+                regularAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
-                        const rawScore = score || '';
+                        const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
-                        // Check if not Term Final
-                        const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
-                        
-                        if (!isTermFinal && score !== undefined && score !== null && score !== '') {
+                        // Calculate percentage for regular assessments
+                        if (score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
                             assessmentPercentages.push(percentage);
                         }
                     });
                 });
-
-                // Calculate columns
-                const avgAssessments = assessmentPercentages.length > 0 
+                
+                // Calculate summary columns
+                const avgAssessments = assessmentPercentages.length > 0
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
-                    
+                
                 const termFinalValue = '25';
                 const totalAvg = (avgAssessments && termFinalValue)
                     ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
-
+                
                 row.push(avgAssessments || '');
                 row.push(termFinalValue);
                 row.push(totalAvg || '');
-
+                
                 return row;
             });
             
@@ -442,11 +444,16 @@ const AssessmentGradeEntry: React.FC = () => {
             
             const allAssessments = structure.assessments;
             
-            // Build two-row headers
-            const mainHeaders = ['Student Name', ...allAssessments.map(main => main.name), 'Average of Assessments', 'Term Final', 'Total Average'];
-            const subHeaders = ['', ...allAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            // Identify Term Final (assessment named "Final")
+            const termFinalAssessment = allAssessments.find(a => a.name === 'Final');
             
-            // Build rows
+            // Regular assessments are all except "Final"
+            const regularAssessments = allAssessments.filter(a => a.name !== 'Final');
+            
+            // Build headers
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
+            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            
             const rows = students.map(student => {
                 const fullName = [student.name, student.fatherName, student.familyName]
                     .filter(Boolean)
@@ -456,37 +463,33 @@ const AssessmentGradeEntry: React.FC = () => {
                 const row: (string | number)[] = [fullName];
                 const assessmentPercentages: number[] = [];
                 
-                const termFinalAssessment = allAssessments.length > 0 ? allAssessments[allAssessments.length - 1] : null;
-
-                allAssessments.forEach(main => {
+                regularAssessments.forEach(main => {
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
-                        const rawScore = score || '';
+                        const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
-                        const isTermFinal = termFinalAssessment && main.id === termFinalAssessment.id;
-                        
-                        if (!isTermFinal && score !== undefined && score !== null && score !== '') {
+                        if (score !== undefined && score !== null && score !== '') {
                             const percentage = (Number(score) / sub.maxScore) * 100;
                             assessmentPercentages.push(percentage);
                         }
                     });
                 });
-
-                const avgAssessments = assessmentPercentages.length > 0 
+                
+                const avgAssessments = assessmentPercentages.length > 0
                     ? (assessmentPercentages.reduce((a, b) => a + b, 0) / assessmentPercentages.length).toFixed(2)
                     : '';
-                    
+                
                 const termFinalValue = '25';
                 const totalAvg = (avgAssessments && termFinalValue)
                     ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
                     : '';
-
+                
                 row.push(avgAssessments || '');
                 row.push(termFinalValue);
                 row.push(totalAvg || '');
-
+                
                 return row;
             });
             
