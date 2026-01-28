@@ -10,8 +10,8 @@ import Loader from '../../components/ui/Loader';
 import Select from '../../components/ui/Select';
 import Input from '../../components/ui/Input';
 import Label from '../../components/ui/Label';
-import { exportToExcel, exportToPDF } from '../../utils/exportGrades';
-import { Download } from 'lucide-react';
+import { exportToExcel, exportToPDF, generateSubAssessmentPDF } from '../../utils/exportGrades';
+import { Download, FileText } from 'lucide-react';
 
 const AssessmentGradeEntry: React.FC = () => {
     const { currentUserData } = useAuth();
@@ -338,6 +338,52 @@ const AssessmentGradeEntry: React.FC = () => {
         }
     };
 
+    const handleGenerateSubAssessmentPDF = async (mainAssessmentName: string, subAssessmentId: string, subAssessmentName: string, maxScore: number) => {
+        try {
+            if (!currentUserData?.schoolId) {
+                alert('School information not found');
+                return;
+            }
+
+            // Get school name
+            const schoolRef = doc(db, 'schools', currentUserData.schoolId);
+            const schoolSnap = await getDoc(schoolRef);
+            const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
+
+            // Collect student scores for this sub-assessment
+            const studentData = students
+                .map(student => ({
+                    name: [student.name, student.fatherName, student.familyName]
+                        .filter(Boolean)
+                        .join(' ')
+                        .trim() || 'N/A',
+                    rawScore: grades[student.uid]?.scores?.[selectedMainAssessmentId]?.[subAssessmentId] ?? 0
+                }))
+                .filter(s => s.rawScore > 0 || grades[students.find(st => [st.name, st.fatherName, st.familyName].filter(Boolean).join(' ').trim() === s.name)?.uid]?.scores?.[selectedMainAssessmentId]?.[subAssessmentId] !== undefined);
+
+            if (studentData.length === 0) {
+                alert('No student scores available for this sub-assessment');
+                return;
+            }
+
+            generateSubAssessmentPDF({
+                schoolName,
+                subjectName: structure?.subjectName || 'Subject',
+                mainAssessmentName,
+                subAssessmentName,
+                grade: selectedGrade,
+                section: selectedSection,
+                maxScore,
+                students: studentData
+            });
+
+            alert('PDF generated successfully!');
+        } catch (err) {
+            console.error('Sub-assessment PDF generation error:', err);
+            alert('Failed to generate PDF. Please try again.');
+        }
+    };
+
     const handleExportExcel = async () => {
         if (!structure || !students || students.length === 0) {
             alert('No data to export');
@@ -368,69 +414,71 @@ const AssessmentGradeEntry: React.FC = () => {
                 colCount: main.subAssessments.length
             }));
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
-            
-            // Build main headers: assessment names + summary columns
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Assessment AVG (75%)', 'Term Final (25%)', 'Final AVG (100%)'];
-            
-            // Build sub headers: sub-assessment names
-            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Assessment AVG', 'Term Final', 'Final AVG'];
-            
+
+            // Build main and sub headers arrays
+            const mainHeaders = ['Student Name', ...regularAssessments.flatMap(main =>
+                main.subAssessments.map(sub => sub.name)
+            ), 'Average of Assessments (%)', 'Term Final (25%)', 'Total Average (%)'];
+
+            const subHeaders = ['', ...regularAssessments.flatMap(main =>
+                main.subAssessments.map(sub => `${sub.name}`)
+            ), '', '', ''];
+
+            // Build data rows with calculations
             const rows = students.map(student => {
-                const fullName = [student.name, student.familyName]
-                    .filter(Boolean)
-                    .join(' ')
-                    .trim() || 'N/A';
-                
-                const row: (string | number)[] = [fullName];
-                
-                // Calculate assessment average by main assessment first
-                const mainAssessmentAverages: number[] = [];
-                
-                // Add raw scores for regular assessments and calculate per-main-assessment averages
+                const row: (string | number)[] = [
+                    [student.name, student.fatherName, student.familyName]
+                        .filter(Boolean)
+                        .join(' ')
+                        .trim() || 'N/A'
+                ];
+
+                let totalAssessmentScore = 0;
+                let assessmentCount = 0;
+                let assessmentAvg75 = '';
+                let termFinal25 = '';
+                let finalAvg = '';
+
+                // Add all regular assessment scores
                 regularAssessments.forEach(main => {
-                    const subScoresForThisMain: number[] = [];
-                    
                     main.subAssessments.forEach(sub => {
-                        const grade = grades[student.uid];
-                        const score = grade?.scores?.[main.id]?.[sub.id];
-                        const rawScore = score !== undefined ? score : '';
-                        row.push(rawScore);
+                        const score = grades[student.uid]?.scores?.[main.id]?.[sub.id] ?? '';
+                        row.push(score);
                         
-                        // Collect scores for this main assessment to calculate its average
-                        if (score !== undefined && score !== null && score !== '') {
-                            const normalizedScore = (Number(score) / sub.maxScore) * 100;
-                            subScoresForThisMain.push(normalizedScore);
+                        if (score !== '') {
+                            totalAssessmentScore += Number(score);
+                            assessmentCount++;
                         }
                     });
-                    
-                    // Calculate average of sub-assessments for this main assessment (normalized to 100%)
-                    if (subScoresForThisMain.length > 0) {
-                        const mainAvgPercent = subScoresForThisMain.reduce((a, b) => a + b, 0) / subScoresForThisMain.length;
-                        mainAssessmentAverages.push(mainAvgPercent);
-                    }
                 });
+
+                // Calculate Average of Assessments (75%)
+                if (assessmentCount > 0) {
+                    const avgScore = totalAssessmentScore / assessmentCount;
+                    assessmentAvg75 = (avgScore * 0.75).toFixed(2);
+                }
+
+                // Calculate Term Final (25%)
+                if (termFinalAssessment && termFinalAssessment.subAssessments.length > 0) {
+                    const termFinalSubId = termFinalAssessment.subAssessments[0].id;
+                    const termFinalScore = grades[student.uid]?.scores?.[termFinalAssessment.id]?.[termFinalSubId];
+                    if (termFinalScore !== undefined && termFinalScore !== '') {
+                        termFinal25 = (Number(termFinalScore) * 0.25).toFixed(2);
+                    }
+                }
                 
-                // Calculate summary columns
-                let assessmentAvg75 = '';
-                let termFinalValue = '25';
-                let finalAvg = '';
-                
-                if (mainAssessmentAverages.length > 0) {
-                    // Overall assessment average (100% scale)
-                    const overallAssessmentAvg = mainAssessmentAverages.reduce((a, b) => a + b, 0) / mainAssessmentAverages.length;
-                    // Convert to 75% scale
-                    assessmentAvg75 = (overallAssessmentAvg * 0.75).toFixed(2);
-                    // Final average = Assessment AVG (75%) + Term Final (25%)
-                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinalValue)).toFixed(2);
+                // Calculate Final AVG only if both Assessment AVG and Term Final exist
+                if (assessmentAvg75 !== '' && termFinal25 !== '') {
+                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinal25)).toFixed(2);
                 }
                 
                 row.push(assessmentAvg75 || '');
-                row.push(termFinalValue);
+                row.push(termFinal25 || '');
                 row.push(finalAvg || '');
                 
                 return row;
             });
-            
+
             exportToExcel({
                 title: `Assessment Grades - ${structure.subjectName}`,
                 grade: selectedGrade || 'Grade',
@@ -478,67 +526,71 @@ const AssessmentGradeEntry: React.FC = () => {
                 colCount: main.subAssessments.length
             }));
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
-            
-            // Build headers
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Assessment AVG (75%)', 'Term Final (25%)', 'Final AVG (100%)'];
-            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Assessment AVG', 'Term Final', 'Final AVG'];
-            
+
+            // Build main and sub headers arrays
+            const mainHeaders = ['Student Name', ...regularAssessments.flatMap(main =>
+                main.subAssessments.map(sub => sub.name)
+            ), 'Average of Assessments (%)', 'Term Final (25%)', 'Total Average (%)'];
+
+            const subHeaders = ['', ...regularAssessments.flatMap(main =>
+                main.subAssessments.map(sub => `${sub.name}`)
+            ), '', '', ''];
+
+            // Build data rows with calculations
             const rows = students.map(student => {
-                const fullName = [student.name, student.familyName]
-                    .filter(Boolean)
-                    .join(' ')
-                    .trim() || 'N/A';
-                
-                const row: (string | number)[] = [fullName];
-                
-                // Calculate assessment average by main assessment first
-                const mainAssessmentAverages: number[] = [];
-                
-                // Add raw scores for regular assessments and calculate per-main-assessment averages
+                const row: (string | number)[] = [
+                    [student.name, student.fatherName, student.familyName]
+                        .filter(Boolean)
+                        .join(' ')
+                        .trim() || 'N/A'
+                ];
+
+                let totalAssessmentScore = 0;
+                let assessmentCount = 0;
+                let assessmentAvg75 = '';
+                let termFinal25 = '';
+                let finalAvg = '';
+
+                // Add all regular assessment scores
                 regularAssessments.forEach(main => {
-                    const subScoresForThisMain: number[] = [];
-                    
                     main.subAssessments.forEach(sub => {
-                        const grade = grades[student.uid];
-                        const score = grade?.scores?.[main.id]?.[sub.id];
-                        const rawScore = score !== undefined ? score : '';
-                        row.push(rawScore);
+                        const score = grades[student.uid]?.scores?.[main.id]?.[sub.id] ?? '';
+                        row.push(score);
                         
-                        // Collect scores for this main assessment to calculate its average
-                        if (score !== undefined && score !== null && score !== '') {
-                            const normalizedScore = (Number(score) / sub.maxScore) * 100;
-                            subScoresForThisMain.push(normalizedScore);
+                        if (score !== '') {
+                            totalAssessmentScore += Number(score);
+                            assessmentCount++;
                         }
                     });
-                    
-                    // Calculate average of sub-assessments for this main assessment (normalized to 100%)
-                    if (subScoresForThisMain.length > 0) {
-                        const mainAvgPercent = subScoresForThisMain.reduce((a, b) => a + b, 0) / subScoresForThisMain.length;
-                        mainAssessmentAverages.push(mainAvgPercent);
-                    }
                 });
+
+                // Calculate Average of Assessments (75%)
+                if (assessmentCount > 0) {
+                    const avgScore = totalAssessmentScore / assessmentCount;
+                    assessmentAvg75 = (avgScore * 0.75).toFixed(2);
+                }
+
+                // Calculate Term Final (25%)
+                if (termFinalAssessment && termFinalAssessment.subAssessments.length > 0) {
+                    const termFinalSubId = termFinalAssessment.subAssessments[0].id;
+                    const termFinalScore = grades[student.uid]?.scores?.[termFinalAssessment.id]?.[termFinalSubId];
+                    if (termFinalScore !== undefined && termFinalScore !== '') {
+                        termFinal25 = (Number(termFinalScore) * 0.25).toFixed(2);
+                    }
+                }
                 
-                // Calculate summary columns
-                let assessmentAvg75 = '';
-                let termFinalValue = '25';
-                let finalAvg = '';
-                
-                if (mainAssessmentAverages.length > 0) {
-                    // Overall assessment average (100% scale)
-                    const overallAssessmentAvg = mainAssessmentAverages.reduce((a, b) => a + b, 0) / mainAssessmentAverages.length;
-                    // Convert to 75% scale
-                    assessmentAvg75 = (overallAssessmentAvg * 0.75).toFixed(2);
-                    // Final average = Assessment AVG (75%) + Term Final (25%)
-                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinalValue)).toFixed(2);
+                // Calculate Final AVG only if both Assessment AVG and Term Final exist
+                if (assessmentAvg75 !== '' && termFinal25 !== '') {
+                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinal25)).toFixed(2);
                 }
                 
                 row.push(assessmentAvg75 || '');
-                row.push(termFinalValue);
+                row.push(termFinal25 || '');
                 row.push(finalAvg || '');
                 
                 return row;
             });
-            
+
             exportToPDF({
                 title: `Assessment Grades - ${structure.subjectName}`,
                 grade: selectedGrade || 'Grade',
@@ -679,8 +731,15 @@ const AssessmentGradeEntry: React.FC = () => {
                                     <th className="border p-2 bg-muted"></th>
                                     {filteredAssessments.map(main => (
                                         main.subAssessments.map(sub => (
-                                            <th key={sub.id} className="border p-2 text-center min-w-[80px] bg-muted/30">
+                                            <th key={sub.id} className="border p-2 text-center min-w-[80px] bg-muted/30 group relative">
                                                 {sub.name} <br /> <span className="text-xs text-muted-foreground">(/ {sub.maxScore})</span>
+                                                <button 
+                                                    onClick={() => handleGenerateSubAssessmentPDF(main.name, sub.id, sub.name, sub.maxScore)}
+                                                    className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    title="Download PDF report for this sub-assessment"
+                                                >
+                                                    <FileText size={14} className="text-blue-600" />
+                                                </button>
                                             </th>
                                         ))
                                     ))}

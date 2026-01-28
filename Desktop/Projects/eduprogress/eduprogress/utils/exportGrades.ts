@@ -291,3 +291,210 @@ export const exportToPDF = (data: ExportGradesData) => {
         throw error;
     }
 };
+
+export interface SubAssessmentPDFData {
+    schoolName: string;
+    subjectName: string;
+    mainAssessmentName: string;
+    subAssessmentName: string;
+    grade: string;
+    section: string;
+    maxScore: number;
+    students: Array<{
+        name: string;
+        rawScore: number;
+    }>;
+}
+
+export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
+    try {
+        const doc = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: "a4"
+        });
+
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const margin = 12;
+        let yPosition = 12;
+
+        // ============= PROFESSIONAL HEADER =============
+        // School Name
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text(data.schoolName || "School", pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 7;
+
+        // Report Title
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text("Sub-Assessment Report", pageWidth / 2, yPosition, { align: "center" });
+        yPosition += 6;
+
+        // Assessment Details
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(60, 60, 60);
+        
+        doc.text(`Subject: ${data.subjectName}`, margin, yPosition);
+        doc.text(`Grade: ${data.grade}`, pageWidth / 2, yPosition);
+        yPosition += 5;
+
+        doc.text(`Section: ${data.section}`, margin, yPosition);
+        doc.text(`Main Assessment: ${data.mainAssessmentName}`, pageWidth / 2, yPosition);
+        yPosition += 5;
+
+        doc.text(`Sub-Assessment: ${data.subAssessmentName}`, margin, yPosition);
+        doc.text(`Max Score: ${data.maxScore}`, pageWidth / 2, yPosition);
+        yPosition += 5;
+
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+        yPosition += 7;
+
+        // ============= TABLE SETUP =============
+        const colWidth = {
+            sNo: 12,
+            name: 50,
+            rawScore: 30,
+            scorePercent: 32
+        };
+        
+        const totalWidth = colWidth.sNo + colWidth.name + colWidth.rawScore + colWidth.scorePercent;
+        const tableStartX = margin;
+        const headerHeight = 8;
+        const rowHeight = 6;
+
+        // ============= HEADER ROW =============
+        doc.setFillColor(25, 55, 109);
+        doc.setDrawColor(25, 55, 109);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+
+        const headers = ["S.No", "Student Name", `Raw Score (/${data.maxScore})`, "Score %"];
+        const columnWidths = [colWidth.sNo, colWidth.name, colWidth.rawScore, colWidth.scorePercent];
+        
+        let xPos = tableStartX;
+        headers.forEach((header, idx) => {
+            doc.rect(xPos, yPosition, columnWidths[idx], headerHeight, "FD");
+            doc.text(
+                header,
+                xPos + columnWidths[idx] / 2,
+                yPosition + 5.5,
+                { align: "center", maxWidth: columnWidths[idx] - 1 }
+            );
+            xPos += columnWidths[idx];
+        });
+        
+        yPosition += headerHeight;
+
+        // ============= DATA ROWS =============
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        doc.setLineWidth(0.2);
+
+        let rowIndex = 0;
+        
+        if (data.students.length === 0) {
+            // No data message
+            doc.setTextColor(120, 120, 120);
+            doc.setFont("helvetica", "italic");
+            doc.text("No student data available", pageWidth / 2, yPosition + 10, { align: "center" });
+            yPosition += 15;
+        } else {
+            data.students.forEach((student, index) => {
+                // Check if we need a new page
+                if (yPosition + rowHeight > pageHeight - margin) {
+                    doc.addPage();
+                    yPosition = margin;
+
+                    // Redraw headers on new page
+                    doc.setFillColor(25, 55, 109);
+                    doc.setDrawColor(25, 55, 109);
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(10);
+
+                    xPos = tableStartX;
+                    headers.forEach((header, idx) => {
+                        doc.rect(xPos, yPosition, columnWidths[idx], headerHeight, "FD");
+                        doc.text(
+                            header,
+                            xPos + columnWidths[idx] / 2,
+                            yPosition + 5.5,
+                            { align: "center", maxWidth: columnWidths[idx] - 1 }
+                        );
+                        xPos += columnWidths[idx];
+                    });
+                    
+                    yPosition += headerHeight;
+                }
+
+                // Alternate row background
+                if (rowIndex % 2 === 0) {
+                    doc.setFillColor(240, 245, 250);
+                    doc.rect(tableStartX, yPosition, totalWidth, rowHeight, "F");
+                }
+
+                // Draw row borders
+                doc.setDrawColor(200, 200, 200);
+                xPos = tableStartX;
+                
+                // S.No
+                doc.rect(xPos, yPosition, colWidth.sNo, rowHeight);
+                doc.setTextColor(0, 0, 0);
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9);
+                doc.text(String(index + 1), xPos + colWidth.sNo / 2, yPosition + 4.2, { align: "center" });
+                xPos += colWidth.sNo;
+
+                // Student Name
+                doc.rect(xPos, yPosition, colWidth.name, rowHeight);
+                let displayName = student.name.length > 18 ? student.name.substring(0, 15) + "..." : student.name;
+                doc.text(displayName, xPos + 1, yPosition + 4.2, { maxWidth: colWidth.name - 2 });
+                xPos += colWidth.name;
+
+                // Raw Score
+                doc.rect(xPos, yPosition, colWidth.rawScore, rowHeight);
+                doc.text(String(student.rawScore), xPos + colWidth.rawScore / 2, yPosition + 4.2, { align: "center" });
+                xPos += colWidth.rawScore;
+
+                // Score Percentage
+                doc.rect(xPos, yPosition, colWidth.scorePercent, rowHeight);
+                const scorePercent = data.maxScore === 0 
+                    ? 0 
+                    : ((student.rawScore / data.maxScore) * 100).toFixed(2);
+                doc.text(`${scorePercent}%`, xPos + colWidth.scorePercent / 2, yPosition + 4.2, { align: "center" });
+
+                yPosition += rowHeight;
+                rowIndex++;
+            });
+        }
+
+        // ============= FOOTER =============
+        yPosition += 4;
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.setFont("helvetica", "italic");
+        doc.text(
+            `Total Students: ${data.students.length} | Report generated on ${new Date().toLocaleString()}`,
+            pageWidth / 2,
+            pageHeight - 5,
+            { align: "center" }
+        );
+
+        // Save file
+        const fileName = [data.subjectName, data.grade, data.section, data.subAssessmentName]
+            .map(part => part.replace(/\s+/g, "_"))
+            .join("_");
+        
+        doc.save(`${fileName}.pdf`);
+    } catch (error) {
+        console.error("Sub-Assessment PDF Export Error:", error);
+        throw error;
+    }
+};
