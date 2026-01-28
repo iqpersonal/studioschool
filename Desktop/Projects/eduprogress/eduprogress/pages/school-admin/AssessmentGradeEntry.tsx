@@ -370,10 +370,10 @@ const AssessmentGradeEntry: React.FC = () => {
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build main headers: assessment names + summary columns
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
             
             // Build sub headers: sub-assessment names
-            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg %', 'Mark %', 'Final %'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
@@ -466,8 +466,8 @@ const AssessmentGradeEntry: React.FC = () => {
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build headers
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
-            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
+            const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg %', 'Mark %', 'Final %'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
@@ -691,6 +691,7 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
 
 
 
