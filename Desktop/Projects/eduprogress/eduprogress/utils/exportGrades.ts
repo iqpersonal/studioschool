@@ -334,30 +334,70 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         doc.text("Sub-Assessment Report", pageWidth / 2, yPosition, { align: "center" });
         yPosition += 6;
 
-        // Assessment Details
+        // ============= METADATA SECTION (Two Columns - Beautiful Layout) =============
         doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(60, 60, 60);
         
-        const col2X = pageWidth - margin - 20;
+        const leftX = margin;
+        const rightX = pageWidth - margin;
+        let metaY = yPosition;
 
-        // Row 1
-        doc.text(`Subject: ${data.subjectName}`, margin, yPosition);
-        doc.text(`Grade: ${data.grade}`, col2X, yPosition, { align: "right" });
-        yPosition += 5;
+        // LEFT COLUMN: Subject, Grade, Section, Teacher Name
+        // Subject
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Subject:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.subjectName, leftX + 20, metaY);
+        metaY += 5;
 
-        // Row 2
-        doc.text(`Section: ${data.section}`, margin, yPosition);
-        doc.text(`Main Assessment: ${data.mainAssessmentName}`, col2X, yPosition, { align: "right" });
-        yPosition += 5;
+        // Grade
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Grade:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.grade, leftX + 20, metaY);
+        metaY += 5;
 
-        // Row 3
-        doc.text(`Sub-Assessment: ${data.subAssessmentName}`, margin, yPosition);
-        doc.text(`Max Score: ${data.maxScore}`, col2X, yPosition, { align: "right" });
-        yPosition += 5;
+        // Section
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Section:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.section, leftX + 20, metaY);
+        metaY += 5;
 
-        doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
-        yPosition += 7;
+        // Teacher Name
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Teacher Name:", leftX, metaY);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(data.teacherName || "N/A", leftX + 20, metaY);
+
+        // RIGHT COLUMN: Max Score, Generated (Right Aligned)
+        let rightMetaY = yPosition;
+        
+        // Generated
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Generated:", rightX - 55, rightMetaY, { align: "right" });
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(new Date().toLocaleDateString(), rightX - 5, rightMetaY, { align: "right" });
+        rightMetaY += 5;
+
+        // Max Score
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(25, 55, 109);
+        doc.text("Max Score:", rightX - 55, rightMetaY, { align: "right" });
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(0, 0, 0);
+        doc.text(String(data.maxScore), rightX - 5, rightMetaY, { align: "right" });
+        
+        yPosition = Math.max(metaY, rightMetaY) + 7;
 
         // ============= TABLE SETUP =============
         const colWidth = {
