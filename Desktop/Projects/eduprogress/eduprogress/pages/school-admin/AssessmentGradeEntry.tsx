@@ -359,7 +359,7 @@ const AssessmentGradeEntry: React.FC = () => {
                         .trim() || 'N/A',
                     rawScore: grades[student.uid]?.scores?.[selectedMainAssessmentId]?.[subAssessmentId] ?? 0
                 }))
-                .filter(s => s.rawScore > 0 || grades[students.find(st => [st.name, st.fatherName, st.familyName].filter(Boolean).join(' ').trim() === s.name)?.uid]?.scores?.[selectedMainAssessmentId]?.[subAssessmentId] !== undefined);
+                .filter(s => s.rawScore !== undefined);
 
             if (studentData.length === 0) {
                 alert('No student scores available for this sub-assessment');
@@ -781,3 +781,4 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
