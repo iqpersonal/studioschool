@@ -370,10 +370,10 @@ const AssessmentGradeEntry: React.FC = () => {
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build main headers: assessment names + summary columns
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Assessment AVG (75%)', 'Term Final (25%)', 'Final AVG (100%)'];
             
             // Build sub headers: sub-assessment names (FIX: Changed first element from '' to 'Student Name')
-            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg Score', 'Final Mark', 'Total'];
+            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Assessment AVG', 'Term Final', 'Final AVG'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
@@ -465,8 +465,8 @@ const AssessmentGradeEntry: React.FC = () => {
             assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build headers
-            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg Assessments (75%)', 'Final Mark (25%)', 'Final Average'];
-            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Avg Score', 'Final Mark', 'Total'];
+            const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Assessment AVG (75%)', 'Term Final (25%)', 'Final AVG (100%)'];
+            const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Assessment AVG', 'Term Final', 'Final AVG'];
             
             const rows = students.map(student => {
                 const fullName = [student.name, student.familyName]
