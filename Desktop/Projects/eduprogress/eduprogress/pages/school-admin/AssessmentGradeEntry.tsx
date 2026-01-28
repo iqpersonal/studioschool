@@ -372,7 +372,7 @@ const AssessmentGradeEntry: React.FC = () => {
             // Build main headers: assessment names + summary columns
             const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Assessment AVG (75%)', 'Term Final (25%)', 'Final AVG (100%)'];
             
-            // Build sub headers: sub-assessment names (FIX: Changed first element from '' to 'Student Name')
+            // Build sub headers: sub-assessment names
             const subHeaders = ['Student Name', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), 'Assessment AVG', 'Term Final', 'Final AVG'];
             
             const rows = students.map(student => {
@@ -382,36 +382,51 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const assessmentScores: number[] = [];
                 
-                // Add raw scores for regular assessments (FIX: Collect actual scores, not percentages)
+                // Calculate assessment average by main assessment first
+                const mainAssessmentAverages: number[] = [];
+                
+                // Add raw scores for regular assessments and calculate per-main-assessment averages
                 regularAssessments.forEach(main => {
+                    const subScoresForThisMain: number[] = [];
+                    
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
-                        // Collect raw scores (not percentages)
+                        // Collect scores for this main assessment to calculate its average
                         if (score !== undefined && score !== null && score !== '') {
-                            assessmentScores.push(Number(score));
+                            const normalizedScore = (Number(score) / sub.maxScore) * 100;
+                            subScoresForThisMain.push(normalizedScore);
                         }
                     });
+                    
+                    // Calculate average of sub-assessments for this main assessment (normalized to 100%)
+                    if (subScoresForThisMain.length > 0) {
+                        const mainAvgPercent = subScoresForThisMain.reduce((a, b) => a + b, 0) / subScoresForThisMain.length;
+                        mainAssessmentAverages.push(mainAvgPercent);
+                    }
                 });
                 
-                // Calculate summary columns using raw scores
-                const avgAssessments = assessmentScores.length > 0
-                    ? (assessmentScores.reduce((a, b) => a + b, 0) / assessmentScores.length).toFixed(2)
-                    : '';
+                // Calculate summary columns
+                let assessmentAvg75 = '';
+                let termFinalValue = '25';
+                let finalAvg = '';
                 
-                const termFinalValue = '25';
-                const totalAvg = (avgAssessments && termFinalValue)
-                    ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
-                    : '';
+                if (mainAssessmentAverages.length > 0) {
+                    // Overall assessment average (100% scale)
+                    const overallAssessmentAvg = mainAssessmentAverages.reduce((a, b) => a + b, 0) / mainAssessmentAverages.length;
+                    // Convert to 75% scale
+                    assessmentAvg75 = (overallAssessmentAvg * 0.75).toFixed(2);
+                    // Final average = Assessment AVG (75%) + Term Final (25%)
+                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinalValue)).toFixed(2);
+                }
                 
-                row.push(avgAssessments || '');
+                row.push(assessmentAvg75 || '');
                 row.push(termFinalValue);
-                row.push(totalAvg || '');
+                row.push(finalAvg || '');
                 
                 return row;
             });
@@ -475,35 +490,51 @@ const AssessmentGradeEntry: React.FC = () => {
                     .trim() || 'N/A';
                 
                 const row: (string | number)[] = [fullName];
-                const assessmentScores: number[] = [];
                 
+                // Calculate assessment average by main assessment first
+                const mainAssessmentAverages: number[] = [];
+                
+                // Add raw scores for regular assessments and calculate per-main-assessment averages
                 regularAssessments.forEach(main => {
+                    const subScoresForThisMain: number[] = [];
+                    
                     main.subAssessments.forEach(sub => {
                         const grade = grades[student.uid];
                         const score = grade?.scores?.[main.id]?.[sub.id];
                         const rawScore = score !== undefined ? score : '';
                         row.push(rawScore);
                         
-                        // Collect raw scores (not percentages)
+                        // Collect scores for this main assessment to calculate its average
                         if (score !== undefined && score !== null && score !== '') {
-                            assessmentScores.push(Number(score));
+                            const normalizedScore = (Number(score) / sub.maxScore) * 100;
+                            subScoresForThisMain.push(normalizedScore);
                         }
                     });
+                    
+                    // Calculate average of sub-assessments for this main assessment (normalized to 100%)
+                    if (subScoresForThisMain.length > 0) {
+                        const mainAvgPercent = subScoresForThisMain.reduce((a, b) => a + b, 0) / subScoresForThisMain.length;
+                        mainAssessmentAverages.push(mainAvgPercent);
+                    }
                 });
                 
-                // Calculate summary columns using raw scores
-                const avgAssessments = assessmentScores.length > 0
-                    ? (assessmentScores.reduce((a, b) => a + b, 0) / assessmentScores.length).toFixed(2)
-                    : '';
+                // Calculate summary columns
+                let assessmentAvg75 = '';
+                let termFinalValue = '25';
+                let finalAvg = '';
                 
-                const termFinalValue = '25';
-                const totalAvg = (avgAssessments && termFinalValue)
-                    ? (parseFloat(String(avgAssessments)) + parseFloat(termFinalValue)).toFixed(2)
-                    : '';
+                if (mainAssessmentAverages.length > 0) {
+                    // Overall assessment average (100% scale)
+                    const overallAssessmentAvg = mainAssessmentAverages.reduce((a, b) => a + b, 0) / mainAssessmentAverages.length;
+                    // Convert to 75% scale
+                    assessmentAvg75 = (overallAssessmentAvg * 0.75).toFixed(2);
+                    // Final average = Assessment AVG (75%) + Term Final (25%)
+                    finalAvg = (parseFloat(assessmentAvg75) + parseFloat(termFinalValue)).toFixed(2);
+                }
                 
-                row.push(avgAssessments || '');
+                row.push(assessmentAvg75 || '');
                 row.push(termFinalValue);
-                row.push(totalAvg || '');
+                row.push(finalAvg || '');
                 
                 return row;
             });
@@ -691,4 +722,3 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
-
