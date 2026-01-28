@@ -92,7 +92,7 @@ export const exportToPDF = (data: ExportGradesData) => {
         yPosition += 5;
 
         // ============= TABLE SETUP =============
-        const numDataColumns = data.subHeaders.length; // Total columns for data (sub-assessments + summaries)
+        const numDataColumns = data.subHeaders.length - 1;  // Exclude 'Student Name' from data columns count
         const rowNoWidth = 8; // Running number column
         const studentNameWidth = 35; // Student name column
         const totalWidth = pageWidth - 2 * margin;
@@ -162,7 +162,15 @@ export const exportToPDF = (data: ExportGradesData) => {
             doc.rect(margin, y, rowNoWidth, subHeaderHeight, "FD");
             doc.rect(margin + rowNoWidth, y, studentNameWidth, subHeaderHeight, "FD");
 
-            // Sub-assessment headers
+            // Draw 'Student Name' text in the sub-header cell
+            doc.text(
+                "Student Name",
+                margin + rowNoWidth + studentNameWidth / 2,
+                y + 3.5,
+                { align: "center", maxWidth: studentNameWidth - 0.5 }
+            );
+
+            // Sub-assessment and summary headers - reads from index 1 onwards (skips 'Student Name')
             xPos = margin + rowNoWidth + studentNameWidth;
             for (let i = 0; i < numDataColumns; i++) {
                 const subHeader = String(data.subHeaders[i + 1] || ""); // +1 because first is empty for student name
@@ -272,3 +280,4 @@ export const exportToPDF = (data: ExportGradesData) => {
         throw error;
     }
 };
+
