@@ -339,16 +339,21 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(60, 60, 60);
         
+        const col2X = pageWidth - margin - 60;
+
+        // Row 1
         doc.text(`Subject: ${data.subjectName}`, margin, yPosition);
-        doc.text(`Grade: ${data.grade}`, pageWidth / 2, yPosition);
+        doc.text(`Grade: ${data.grade}`, col2X, yPosition, { align: "right" });
         yPosition += 5;
 
+        // Row 2
         doc.text(`Section: ${data.section}`, margin, yPosition);
-        doc.text(`Main Assessment: ${data.mainAssessmentName}`, pageWidth / 2, yPosition);
+        doc.text(`Main Assessment: ${data.mainAssessmentName}`, col2X, yPosition, { align: "right" });
         yPosition += 5;
 
+        // Row 3
         doc.text(`Sub-Assessment: ${data.subAssessmentName}`, margin, yPosition);
-        doc.text(`Max Score: ${data.maxScore}`, pageWidth / 2, yPosition);
+        doc.text(`Max Score: ${data.maxScore}`, col2X, yPosition, { align: "right" });
         yPosition += 5;
 
         doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
