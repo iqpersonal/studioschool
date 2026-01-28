@@ -380,23 +380,24 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         doc.setTextColor(0, 0, 0);
         doc.text(String(data.teacherName || "N/A"), leftX + 35, metaY);
 
-        // RIGHT COLUMN: Generated, Max Score (Right Aligned)
+        // RIGHT COLUMN: Generated, Max Score (Compact Right-Aligned Layout)
         let rightMetaY = yPosition;
-        const rightEdge = rightX;  // Right margin position for alignment
+        const rightEdge = rightX;
         
-        // Generated Date (Label and value on same line)
+        // Generated Date - Compact layout
         doc.setFont("helvetica", "bold");
         doc.setTextColor(25, 55, 109);
-        doc.text("Generated: ", rightEdge - 35, rightMetaY, { align: "right" });
+        doc.setFontSize(9);
+        doc.text("Generated:", rightEdge - 50, rightMetaY, { align: "right" });
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
         doc.text(new Date().toLocaleDateString(), rightEdge, rightMetaY, { align: "right" });
         rightMetaY += 5;
 
-        // Max Score (Label and value on same line)
+        // Max Score - Compact layout
         doc.setFont("helvetica", "bold");
         doc.setTextColor(25, 55, 109);
-        doc.text("Max Score: ", rightEdge - 15, rightMetaY, { align: "right" });
+        doc.text("Max Score:", rightEdge - 50, rightMetaY, { align: "right" });
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
         doc.text(String(data.maxScore), rightEdge, rightMetaY, { align: "right" });
