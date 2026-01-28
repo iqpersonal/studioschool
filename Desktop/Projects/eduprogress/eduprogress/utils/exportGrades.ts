@@ -154,21 +154,14 @@ export const exportToPDF = (data: ExportGradesData) => {
             // ===== SUB-HEADERS ROW =====
             doc.setFillColor(220, 230, 241);
             doc.setDrawColor(25, 55, 109);
-            doc.setTextColor(25, 55, 109);
-            doc.setFont("helvetica", "normal");
+            doc.setLineWidth(0.3);
+            doc.setTextColor(0, 0, 0);  // Changed to black for better contrast
+            doc.setFont("helvetica", "bold");  // Bold for better visibility
             doc.setFontSize(8);
 
-            // Empty cells for row number and student name
+            // Empty cells for row number and student name columns
             doc.rect(margin, y, rowNoWidth, subHeaderHeight, "FD");
             doc.rect(margin + rowNoWidth, y, studentNameWidth, subHeaderHeight, "FD");
-
-            // Draw 'Student Name' text in the sub-header cell
-            doc.text(
-                "Student Name",
-                margin + rowNoWidth + studentNameWidth / 2,
-                y + 3.5,
-                { align: "center", maxWidth: studentNameWidth - 0.5 }
-            );
 
             // Sub-assessment and summary headers - reads from index 1 onwards (skips 'Student Name')
             xPos = margin + rowNoWidth + studentNameWidth;
@@ -176,10 +169,11 @@ export const exportToPDF = (data: ExportGradesData) => {
                 const subHeader = String(data.subHeaders[i + 1] || ""); // +1 because first is empty for student name
                 doc.rect(xPos, y, cellWidth, subHeaderHeight, "FD");
                 if (subHeader) {
+                    // Y position adjusted to 4.5 for better vertical centering in 6mm cell with font size 8
                     doc.text(
                         subHeader,
                         xPos + cellWidth / 2,
-                        y + 3.5,
+                        y + 4.5,  // Changed from 3.5 to 4.5 for better centering
                         { align: "center", maxWidth: cellWidth - 0.5 }
                     );
                 }
@@ -280,4 +274,3 @@ export const exportToPDF = (data: ExportGradesData) => {
         throw error;
     }
 };
-
