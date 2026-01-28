@@ -357,9 +357,9 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         // ============= TABLE SETUP =============
         const colWidth = {
             sNo: 12,
-            name: 50,
-            rawScore: 30,
-            scorePercent: 32
+            name: 75,
+            rawScore: 28,
+            scorePercent: 30
         };
         
         const totalWidth = colWidth.sNo + colWidth.name + colWidth.rawScore + colWidth.scorePercent;
@@ -454,8 +454,7 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
 
                 // Student Name
                 doc.rect(xPos, yPosition, colWidth.name, rowHeight);
-                let displayName = student.name.length > 18 ? student.name.substring(0, 15) + "..." : student.name;
-                doc.text(displayName, xPos + 1, yPosition + 4.2, { maxWidth: colWidth.name - 2 });
+                doc.text(student.name, xPos + 1, yPosition + 4.2, { maxWidth: colWidth.name - 2 });
                 xPos += colWidth.name;
 
                 // Raw Score
@@ -467,8 +466,8 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
                 doc.rect(xPos, yPosition, colWidth.scorePercent, rowHeight);
                 const scorePercent = data.maxScore === 0 
                     ? 0 
-                    : ((student.rawScore / data.maxScore) * 100).toFixed(2);
-                doc.text(`${scorePercent}%`, xPos + colWidth.scorePercent / 2, yPosition + 4.2, { align: "center" });
+                    : Math.round((student.rawScore / data.maxScore) * 100);
+                doc.text(String(scorePercent), xPos + colWidth.scorePercent / 2, yPosition + 4.2, { align: "center" });
 
                 yPosition += rowHeight;
                 rowIndex++;
@@ -498,3 +497,4 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         throw error;
     }
 };
+
