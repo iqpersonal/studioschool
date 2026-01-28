@@ -339,7 +339,7 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(60, 60, 60);
         
-        const col2X = pageWidth - margin - 60;
+        const col2X = pageWidth - margin - 20;
 
         // Row 1
         doc.text(`Subject: ${data.subjectName}`, margin, yPosition);
