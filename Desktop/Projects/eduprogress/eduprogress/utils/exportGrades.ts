@@ -380,27 +380,26 @@ export const generateSubAssessmentPDF = (data: SubAssessmentPDFData) => {
         doc.setTextColor(0, 0, 0);
         doc.text(String(data.teacherName || "N/A"), leftX + 35, metaY);
 
-        // RIGHT COLUMN: Generated, Max Score (Right Aligned with same margin as left)
+        // RIGHT COLUMN: Generated, Max Score (Right Aligned)
         let rightMetaY = yPosition;
-        const rightLabelX = rightX - 65;  // Position for right-aligned labels
-        const rightValueX = rightX - margin;  // Position for right-aligned values
+        const rightEdge = rightX;  // Right margin position for alignment
         
-        // Generated Date
+        // Generated Date (Label and value on same line)
         doc.setFont("helvetica", "bold");
         doc.setTextColor(25, 55, 109);
-        doc.text("Generated:", rightLabelX, rightMetaY, { align: "right" });
+        doc.text("Generated: ", rightEdge - 35, rightMetaY, { align: "right" });
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
-        doc.text(new Date().toLocaleDateString(), rightValueX, rightMetaY, { align: "right" });
+        doc.text(new Date().toLocaleDateString(), rightEdge, rightMetaY, { align: "right" });
         rightMetaY += 5;
 
-        // Max Score
+        // Max Score (Label and value on same line)
         doc.setFont("helvetica", "bold");
         doc.setTextColor(25, 55, 109);
-        doc.text("Max Score:", rightLabelX, rightMetaY, { align: "right" });
+        doc.text("Max Score: ", rightEdge - 15, rightMetaY, { align: "right" });
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
-        doc.text(String(data.maxScore), rightValueX, rightMetaY, { align: "right" });
+        doc.text(String(data.maxScore), rightEdge, rightMetaY, { align: "right" });
         
         yPosition = Math.max(metaY, rightMetaY) + 7;
 
