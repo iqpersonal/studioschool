@@ -64,90 +64,101 @@ export const exportToPDF = (data: ExportGradesData) => {
 
         const pageHeight = doc.internal.pageSize.getHeight();
         const pageWidth = doc.internal.pageSize.getWidth();
-        const margin = 15;
-        let yPosition = 15;
+        const margin = 8; // Reduced margin
+        let yPosition = 8;
 
         // ============= PROFESSIONAL HEADER =============
         // School Name
-        doc.setFontSize(18);
+        doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(25, 55, 109); // Professional dark blue
+        doc.setTextColor(25, 55, 109);
         doc.text(data.schoolName || "School", pageWidth / 2, yPosition, { align: "center" });
-        yPosition += 8;
+        yPosition += 5;
 
         // Title
-        doc.setFontSize(16);
+        doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(0, 0, 0);
         doc.text("Assessment Grades Report", pageWidth / 2, yPosition, { align: "center" });
-        yPosition += 7;
+        yPosition += 4;
 
         // Metadata Line
-        doc.setFontSize(10);
+        doc.setFontSize(8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(80, 80, 80);
         const metadata = `Grade: ${data.grade}    Subject: ${data.subject}    Section: ${data.section}    Generated: ${new Date().toLocaleDateString()}`;
         doc.text(metadata, pageWidth / 2, yPosition, { align: "center" });
-        yPosition += 10;
+        yPosition += 5;
 
         // ============= TABLE SETUP =============
         const numHeaders = data.mainHeaders.length;
-        const studentNameWidth = 40; // Increased to ensure single line fit
+        const rowNoWidth = 8; // Running number column
+        const studentNameWidth = 35; // Student name column
         const totalWidth = pageWidth - 2 * margin;
-        const remainingWidth = totalWidth - studentNameWidth;
+        const remainingWidth = totalWidth - rowNoWidth - studentNameWidth;
         const cellWidth = remainingWidth / (numHeaders - 1); // -1 because first column is student name
 
-        const mainHeaderHeight = 8;
-        const subHeaderHeight = 7;
-        const dataRowHeight = 8;
+        const mainHeaderHeight = 6.5;
+        const subHeaderHeight = 6;
+        const dataRowHeight = 6;
 
         // Helper function to draw table headers (main + sub)
         const drawHeaders = (startY: number): number => {
             let y = startY;
 
             // ===== MAIN HEADERS ROW =====
-            doc.setFillColor(25, 55, 109); // Professional dark blue
+            doc.setFillColor(25, 55, 109);
             doc.setDrawColor(25, 55, 109);
             doc.setTextColor(255, 255, 255);
             doc.setFont("helvetica", "bold");
-            doc.setFontSize(11);
+            doc.setFontSize(9);
 
-            // Student Name header
-            doc.rect(margin, y, studentNameWidth, mainHeaderHeight, "FD");
+            // Row number header
+            doc.rect(margin, y, rowNoWidth, mainHeaderHeight, "FD");
             doc.text(
-                "Student Name",
-                margin + studentNameWidth / 2,
-                y + 5.5,
+                "S.No",
+                margin + rowNoWidth / 2,
+                y + 4.5,
                 { align: "center" }
             );
 
-            // Assessment headers (spanning their sub-assessments)
-            let xPos = margin + studentNameWidth;
+            // Student Name header
+            doc.rect(margin + rowNoWidth, y, studentNameWidth, mainHeaderHeight, "FD");
+            doc.text(
+                "Student Name",
+                margin + rowNoWidth + studentNameWidth / 2,
+                y + 4.5,
+                { align: "center" }
+            );
+
+            // Assessment headers
+            let xPos = margin + rowNoWidth + studentNameWidth;
             for (let i = 1; i < numHeaders; i++) {
                 const header = String(data.mainHeaders[i] || "");
                 doc.rect(xPos, y, cellWidth, mainHeaderHeight, "FD");
                 doc.text(
                     header,
                     xPos + cellWidth / 2,
-                    y + 5.5,
-                    { align: "center", maxWidth: cellWidth - 1 }
+                    y + 4.5,
+                    { align: "center", maxWidth: cellWidth - 0.5 }
                 );
                 xPos += cellWidth;
             }
             y += mainHeaderHeight;
 
             // ===== SUB-HEADERS ROW =====
-            doc.setFillColor(220, 230, 241); // Light blue
+            doc.setFillColor(220, 230, 241);
             doc.setDrawColor(25, 55, 109);
             doc.setTextColor(25, 55, 109);
             doc.setFont("helvetica", "normal");
-            doc.setFontSize(9);
+            doc.setFontSize(8);
 
-            // Empty cell under Student Name
-            doc.rect(margin, y, studentNameWidth, subHeaderHeight, "FD");
+            // Empty cells for row number and student name
+            doc.rect(margin, y, rowNoWidth, subHeaderHeight, "FD");
+            doc.rect(margin + rowNoWidth, y, studentNameWidth, subHeaderHeight, "FD");
 
             // Sub-assessment headers
-            xPos = margin + studentNameWidth;
+            xPos = margin + rowNoWidth + studentNameWidth;
             for (let i = 1; i < numHeaders; i++) {
                 const subHeader = String(data.subHeaders[i] || "");
                 doc.rect(xPos, y, cellWidth, subHeaderHeight, "FD");
@@ -155,8 +166,8 @@ export const exportToPDF = (data: ExportGradesData) => {
                     doc.text(
                         subHeader,
                         xPos + cellWidth / 2,
-                        y + 4.5,
-                        { align: "center", maxWidth: cellWidth - 1 }
+                        y + 4,
+                        { align: "center", maxWidth: cellWidth - 0.5 }
                     );
                 }
                 xPos += cellWidth;
@@ -171,12 +182,12 @@ export const exportToPDF = (data: ExportGradesData) => {
 
         // ============= DATA ROWS =============
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setTextColor(0, 0, 0);
-        doc.setDrawColor(150, 150, 150);
+        doc.setDrawColor(200, 200, 200);
 
         let rowIndex = 0;
-        data.rows.forEach((row) => {
+        data.rows.forEach((row, dataRowIndex) => {
             // Check if we need a new page
             if (yPosition + dataRowHeight > pageHeight - margin) {
                 doc.addPage();
@@ -184,42 +195,50 @@ export const exportToPDF = (data: ExportGradesData) => {
                 yPosition = drawHeaders(yPosition);
             }
 
-            // Alternate row background (subtle)
+            // Alternate row background
             if (rowIndex % 2 === 0) {
                 doc.setFillColor(248, 249, 250);
                 doc.rect(margin, yPosition, totalWidth, dataRowHeight, "F");
             }
 
-            // Draw borders (cleaner - just outer and row separators)
-            doc.setDrawColor(200, 200, 200);
-            doc.setLineWidth(0.3);
+            // Draw borders
+            doc.setLineWidth(0.2);
 
-            // Student name cell - truncate to fit on single line
-            doc.rect(margin, yPosition, studentNameWidth, dataRowHeight);
+            // Row number cell
+            doc.rect(margin, yPosition, rowNoWidth, dataRowHeight);
+            doc.text(
+                String(dataRowIndex + 1),
+                margin + rowNoWidth / 2,
+                yPosition + 4,
+                { align: "center" }
+            );
+
+            // Student name cell
+            doc.rect(margin + rowNoWidth, yPosition, studentNameWidth, dataRowHeight);
             let studentName = String(row[0] || "");
             
-            // Truncate name if too long - fit in 40mm with 10pt font
-            if (studentName.length > 25) {
-                studentName = studentName.substring(0, 22) + "...";
+            // Truncate name if too long
+            if (studentName.length > 18) {
+                studentName = studentName.substring(0, 15) + "...";
             }
             
             doc.text(
                 studentName,
-                margin + 2,
-                yPosition + 5,
-                { maxWidth: studentNameWidth - 3 }
+                margin + rowNoWidth + 1,
+                yPosition + 4,
+                { maxWidth: studentNameWidth - 2 }
             );
 
             // Score cells
-            let xPos = margin + studentNameWidth;
+            let xPos = margin + rowNoWidth + studentNameWidth;
             for (let i = 1; i < row.length && i < numHeaders; i++) {
                 doc.rect(xPos, yPosition, cellWidth, dataRowHeight);
                 const cellValue = String(row[i] || "");
                 doc.text(
                     cellValue,
                     xPos + cellWidth / 2,
-                    yPosition + 5,
-                    { align: "center", maxWidth: cellWidth - 1 }
+                    yPosition + 4,
+                    { align: "center", maxWidth: cellWidth - 0.5 }
                 );
                 xPos += cellWidth;
             }
@@ -229,14 +248,14 @@ export const exportToPDF = (data: ExportGradesData) => {
         });
 
         // ============= FOOTER =============
-        yPosition += 5;
-        doc.setFontSize(8);
+        yPosition += 2;
+        doc.setFontSize(7);
         doc.setTextColor(120, 120, 120);
         doc.setFont("helvetica", "italic");
         doc.text(
             `Report generated on ${new Date().toLocaleString()}`,
             pageWidth / 2,
-            pageHeight - 10,
+            pageHeight - 5,
             { align: "center" }
         );
 
