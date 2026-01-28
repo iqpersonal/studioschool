@@ -7,8 +7,9 @@ export interface ExportGradesData {
     subject: string;
     section: string;
     schoolName: string;
-    mainHeaders: string[];
-    subHeaders: string[];
+    mainHeaders: string[]; // Assessment names + summary columns
+    subHeaders: string[]; // Sub-assessment names
+    assessmentGroups: { name: string; colCount: number }[]; // Groups for spanning headers
     rows: (string | number)[][];
 }
 
@@ -91,22 +92,22 @@ export const exportToPDF = (data: ExportGradesData) => {
         yPosition += 5;
 
         // ============= TABLE SETUP =============
-        const numHeaders = data.mainHeaders.length;
+        const numDataColumns = data.subHeaders.length; // Total columns for data (sub-assessments + summaries)
         const rowNoWidth = 8; // Running number column
         const studentNameWidth = 35; // Student name column
         const totalWidth = pageWidth - 2 * margin;
         const remainingWidth = totalWidth - rowNoWidth - studentNameWidth;
-        const cellWidth = remainingWidth / (numHeaders - 1); // -1 because first column is student name
+        const cellWidth = remainingWidth / numDataColumns;
 
         const mainHeaderHeight = 6.5;
         const subHeaderHeight = 6;
         const dataRowHeight = 6;
 
-        // Helper function to draw table headers (main + sub)
+        // Helper function to draw table headers (main + sub) with grouped headers
         const drawHeaders = (startY: number): number => {
             let y = startY;
 
-            // ===== MAIN HEADERS ROW =====
+            // ===== MAIN HEADERS ROW (Grouped) =====
             doc.setFillColor(25, 55, 109);
             doc.setDrawColor(25, 55, 109);
             doc.setTextColor(255, 255, 255);
@@ -131,19 +132,23 @@ export const exportToPDF = (data: ExportGradesData) => {
                 { align: "center" }
             );
 
-            // Assessment headers
+            // Assessment main headers (with grouping/spanning)
             let xPos = margin + rowNoWidth + studentNameWidth;
-            for (let i = 1; i < numHeaders; i++) {
-                const header = String(data.mainHeaders[i] || "");
-                doc.rect(xPos, y, cellWidth, mainHeaderHeight, "FD");
-                doc.text(
-                    header,
-                    xPos + cellWidth / 2,
-                    y + 4.5,
-                    { align: "center", maxWidth: cellWidth - 0.5 }
-                );
-                xPos += cellWidth;
+            
+            if (data.assessmentGroups && data.assessmentGroups.length > 0) {
+                data.assessmentGroups.forEach(group => {
+                    const groupWidth = cellWidth * group.colCount;
+                    doc.rect(xPos, y, groupWidth, mainHeaderHeight, "FD");
+                    doc.text(
+                        group.name,
+                        xPos + groupWidth / 2,
+                        y + 4.5,
+                        { align: "center", maxWidth: groupWidth - 0.5 }
+                    );
+                    xPos += groupWidth;
+                });
             }
+            
             y += mainHeaderHeight;
 
             // ===== SUB-HEADERS ROW =====
@@ -159,14 +164,14 @@ export const exportToPDF = (data: ExportGradesData) => {
 
             // Sub-assessment headers
             xPos = margin + rowNoWidth + studentNameWidth;
-            for (let i = 1; i < numHeaders; i++) {
-                const subHeader = String(data.subHeaders[i] || "");
+            for (let i = 0; i < numDataColumns; i++) {
+                const subHeader = String(data.subHeaders[i + 1] || ""); // +1 because first is empty for student name
                 doc.rect(xPos, y, cellWidth, subHeaderHeight, "FD");
                 if (subHeader) {
                     doc.text(
                         subHeader,
                         xPos + cellWidth / 2,
-                        y + 4,
+                        y + 3.5,
                         { align: "center", maxWidth: cellWidth - 0.5 }
                     );
                 }
@@ -231,7 +236,7 @@ export const exportToPDF = (data: ExportGradesData) => {
 
             // Score cells
             let xPos = margin + rowNoWidth + studentNameWidth;
-            for (let i = 1; i < row.length && i < numHeaders; i++) {
+            for (let i = 1; i < row.length && i <= numDataColumns; i++) {
                 doc.rect(xPos, yPosition, cellWidth, dataRowHeight);
                 const cellValue = String(row[i] || "");
                 doc.text(

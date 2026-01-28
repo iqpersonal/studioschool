@@ -361,6 +361,13 @@ const AssessmentGradeEntry: React.FC = () => {
             
             // Regular assessments are all except "Final"
             const regularAssessments = allAssessments.filter(a => a.name !== 'Final');
+
+            // Build assessment groups for PDF header spanning
+            const assessmentGroups = regularAssessments.map(main => ({
+                name: main.name,
+                colCount: main.subAssessments.length
+            }));
+            assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build main headers: assessment names + summary columns
             const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
@@ -418,6 +425,7 @@ const AssessmentGradeEntry: React.FC = () => {
                 schoolName: schoolName,
                 mainHeaders,
                 subHeaders,
+                assessmentGroups,
                 rows
             });
         } catch (err) {
@@ -449,6 +457,13 @@ const AssessmentGradeEntry: React.FC = () => {
             
             // Regular assessments are all except "Final"
             const regularAssessments = allAssessments.filter(a => a.name !== 'Final');
+
+            // Build assessment groups for PDF header spanning
+            const assessmentGroups = regularAssessments.map(main => ({
+                name: main.name,
+                colCount: main.subAssessments.length
+            }));
+            assessmentGroups.push({ name: 'Summary', colCount: 3 }); // For the 3 summary columns
             
             // Build headers
             const mainHeaders = ['Student Name', ...regularAssessments.map(a => a.name), 'Avg of Assessments', 'Term Final', 'Total Average'];
@@ -501,6 +516,7 @@ const AssessmentGradeEntry: React.FC = () => {
                 schoolName: schoolName,
                 mainHeaders,
                 subHeaders,
+                assessmentGroups,
                 rows
             });
         } catch (err) {
@@ -675,4 +691,9 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
+
+
+
+
 
