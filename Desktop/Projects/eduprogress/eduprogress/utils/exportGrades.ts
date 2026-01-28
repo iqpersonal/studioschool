@@ -92,7 +92,7 @@ export const exportToPDF = (data: ExportGradesData) => {
 
         // ============= TABLE SETUP =============
         const numHeaders = data.mainHeaders.length;
-        const studentNameWidth = 35; // Wider for full names
+        const studentNameWidth = 40; // Increased to ensure single line fit
         const totalWidth = pageWidth - 2 * margin;
         const remainingWidth = totalWidth - studentNameWidth;
         const cellWidth = remainingWidth / (numHeaders - 1); // -1 because first column is student name
@@ -194,9 +194,15 @@ export const exportToPDF = (data: ExportGradesData) => {
             doc.setDrawColor(200, 200, 200);
             doc.setLineWidth(0.3);
 
-            // Student name cell
+            // Student name cell - truncate to fit on single line
             doc.rect(margin, yPosition, studentNameWidth, dataRowHeight);
-            const studentName = String(row[0] || "");
+            let studentName = String(row[0] || "");
+            
+            // Truncate name if too long - fit in 40mm with 10pt font
+            if (studentName.length > 25) {
+                studentName = studentName.substring(0, 22) + "...";
+            }
+            
             doc.text(
                 studentName,
                 margin + 2,

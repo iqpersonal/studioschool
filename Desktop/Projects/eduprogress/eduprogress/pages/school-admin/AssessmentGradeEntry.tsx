@@ -369,7 +369,7 @@ const AssessmentGradeEntry: React.FC = () => {
             const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
             
             const rows = students.map(student => {
-                const fullName = [student.name, student.fatherName, student.familyName]
+                const fullName = [student.name, student.familyName]
                     .filter(Boolean)
                     .join(' ')
                     .trim() || 'N/A';
@@ -455,7 +455,7 @@ const AssessmentGradeEntry: React.FC = () => {
             const subHeaders = ['', ...regularAssessments.flatMap(main => main.subAssessments.map(sub => sub.name)), '', '', ''];
             
             const rows = students.map(student => {
-                const fullName = [student.name, student.fatherName, student.familyName]
+                const fullName = [student.name, student.familyName]
                     .filter(Boolean)
                     .join(' ')
                     .trim() || 'N/A';
@@ -675,3 +675,4 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
