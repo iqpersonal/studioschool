@@ -350,6 +350,14 @@ const AssessmentGradeEntry: React.FC = () => {
             const schoolSnap = await getDoc(schoolRef);
             const schoolName = schoolSnap.exists() ? schoolSnap.data().name : 'School';
 
+            // Get teacher name from assignments
+            const teacherAssignment = assignments.find(a => 
+                a.grade === selectedGrade && 
+                a.section === selectedSection && 
+                a.subjectId === selectedSubjectId
+            );
+            const teacherName = teacherAssignment?.teacherName || 'N/A';
+
             // Collect student scores for this sub-assessment
             const studentData = students
                 .map(student => ({
@@ -374,6 +382,7 @@ const AssessmentGradeEntry: React.FC = () => {
                 grade: selectedGrade,
                 section: selectedSection,
                 maxScore,
+                teacherName,
                 students: studentData
             });
 
@@ -781,6 +790,8 @@ const AssessmentGradeEntry: React.FC = () => {
 };
 
 export default AssessmentGradeEntry;
+
+
 
 
 
